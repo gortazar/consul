@@ -2884,6 +2884,7 @@ func checkProtocolMatch(tx ReadTxn, ws memdb.WatchSet, svc *structs.GatewayServi
 
 // UpstreamsForService will find all upstream services that the input could route traffic to.
 // There are two factors at play. Upstreams defined in a proxy registration, and the discovery chain for those upstreams.
+// TODO (freddy): Account for ingress gateways
 func (s *Store) UpstreamsForService(ws memdb.WatchSet, dc, service string, entMeta *structs.EnterpriseMeta) (uint64, []structs.ServiceName, error) {
 	tx := s.db.ReadTxn()
 	defer tx.Abort()
@@ -2891,7 +2892,7 @@ func (s *Store) UpstreamsForService(ws memdb.WatchSet, dc, service string, entMe
 	sn := structs.NewServiceName(service, entMeta)
 	idx, upstreams, err := upstreamsFromRegistration(ws, tx, sn)
 	if err != nil {
-		return 0, nil, fmt.Errorf("failed to get downstreams for %q: %v", sn.String(), err)
+		return 0, nil, fmt.Errorf("failed to get upstreams for %q: %v", sn.String(), err)
 	}
 
 	var maxIdx uint64
@@ -2928,6 +2929,7 @@ func (s *Store) UpstreamsForService(ws memdb.WatchSet, dc, service string, entMe
 
 // DownstreamsForService will find all downstream services that could route traffic to the input service.
 // There are two factors at play. Upstreams defined in a proxy registration, and the discovery chain for those upstreams.
+// TODO (freddy): Account for ingress gateways
 func (s *Store) DownstreamsForService(ws memdb.WatchSet, dc, service string, entMeta *structs.EnterpriseMeta) (uint64, []structs.ServiceName, error) {
 	tx := s.db.ReadTxn()
 	defer tx.Abort()
@@ -3048,6 +3050,11 @@ func updateMeshTopology(tx *txn, idx uint64, node string, svc *structs.NodeServi
 	downstream := structs.NewServiceName(svc.Proxy.DestinationServiceName, &svc.EnterpriseMeta)
 	inserted := make(map[structs.ServiceName]bool)
 	for _, u := range svc.Proxy.Upstreams {
+		if u.DestinationType == structs.UpstreamDestTypePreparedQuery {
+			continue
+		}
+
+		// TODO (freddy): Account for upstream datacenter
 		upstreamMeta := structs.EnterpriseMetaInitializer(u.DestinationNamespace)
 		upstream := structs.NewServiceName(u.DestinationName, &upstreamMeta)
 

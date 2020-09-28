@@ -394,6 +394,7 @@ func (s *Store) targetsForSource(ws memdb.WatchSet, tx ReadTxn, dc, service stri
 		em := structs.EnterpriseMetaInitializer(t.Namespace)
 		target := structs.NewServiceName(t.Service, &em)
 
+		// TODO (freddy): Allow upstream DC and encode in response
 		if t.Datacenter == dc {
 			resp = append(resp, target)
 		}
