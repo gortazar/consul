@@ -1714,7 +1714,7 @@ func TestSourcesForTarget(t *testing.T) {
 			defer tx.Abort()
 
 			sn := structs.NewServiceName("sink", structs.DefaultEnterpriseMeta())
-			idx, ids, err := s.sourcesForTarget(ws, tx, "dc1", sn)
+			idx, ids, err := s.discoveryChainSources(ws, tx, "dc1", sn)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)
@@ -1915,7 +1915,7 @@ func TestTargetsForSource(t *testing.T) {
 			tx := s.db.ReadTxn()
 			defer tx.Abort()
 
-			idx, ids, err := s.targetsForSource(ws, tx, "dc1", "web", nil)
+			idx, ids, err := s.discoveryChainTargets(ws, tx, "dc1", "web", nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)
