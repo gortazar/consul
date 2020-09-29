@@ -3009,7 +3009,7 @@ func (s *Store) UpstreamsForService(ws memdb.WatchSet, dc string, sn structs.Ser
 	)
 	for _, u := range upstreams {
 		// Evaluate the targets from the upstream's discovery chain
-		idx, targets, err := s.discoveryChainTargets(ws, tx, dc, u.Name, &u.EnterpriseMeta)
+		idx, targets, err := s.discoveryChainTargets(ws, dc, u.Name, &u.EnterpriseMeta)
 		if err != nil {
 			return 0, nil, fmt.Errorf("failed to get discovery chain targets for %q: %v", u.String(), err)
 		}

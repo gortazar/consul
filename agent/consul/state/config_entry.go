@@ -374,7 +374,7 @@ var serviceGraphKinds = []string{
 }
 
 // discoveryChainTargets will return a list of services listed as a target for the input's discovery chain
-func (s *Store) discoveryChainTargets(ws memdb.WatchSet, tx ReadTxn, dc, service string, entMeta *structs.EnterpriseMeta) (uint64, []structs.ServiceName, error) {
+func (s *Store) discoveryChainTargets(ws memdb.WatchSet, dc, service string, entMeta *structs.EnterpriseMeta) (uint64, []structs.ServiceName, error) {
 	source := structs.NewServiceName(service, entMeta)
 	req := discoverychain.CompileRequest{
 		ServiceName:         source.Name,

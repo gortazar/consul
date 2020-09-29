@@ -1915,7 +1915,7 @@ func TestTargetsForSource(t *testing.T) {
 			tx := s.db.ReadTxn()
 			defer tx.Abort()
 
-			idx, ids, err := s.discoveryChainTargets(ws, tx, "dc1", "web", nil)
+			idx, ids, err := s.discoveryChainTargets(ws, "dc1", "web", nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)

@@ -6194,7 +6194,7 @@ func TestCatalog_catalogDownstreams_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = downstreamsFromRegistration(ws, tx, admin)
+	idx, _, err = downstreamsFromRegistration(ws, tx, admin)
 	require.NoError(t, err)
 
 	exp = expect{
@@ -6225,7 +6225,7 @@ func TestCatalog_catalogDownstreams_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = downstreamsFromRegistration(ws, tx, cache)
+	idx, _, err = downstreamsFromRegistration(ws, tx, cache)
 
 	require.NoError(t, err)
 
@@ -6696,7 +6696,7 @@ func TestCatalog_upstreamsFromRegistration_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = upstreamsFromRegistration(ws, tx, web)
+	idx, _, err = upstreamsFromRegistration(ws, tx, web)
 
 	require.NoError(t, err)
 
