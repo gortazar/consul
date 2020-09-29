@@ -6994,7 +6994,7 @@ func TestCatalog_DownstreamsForService(t *testing.T) {
 			}
 
 			ws := memdb.NewWatchSet()
-			sn := structs.NewServiceName("api", structs.DefaultEnterpriseMeta())
+			sn := structs.NewServiceName("admin", structs.DefaultEnterpriseMeta())
 			idx, names, err := s.DownstreamsForService(ws, "dc1", sn)
 			require.NoError(t, err)
 
