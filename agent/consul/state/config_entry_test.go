@@ -1713,7 +1713,8 @@ func TestSourcesForTarget(t *testing.T) {
 			tx := s.db.ReadTxn()
 			defer tx.Abort()
 
-			idx, ids, err := s.sourcesForTarget(ws, tx, "dc1", "sink", nil)
+			sn := structs.NewServiceName("sink", structs.DefaultEnterpriseMeta())
+			idx, ids, err := s.sourcesForTarget(ws, tx, "dc1", sn)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)
