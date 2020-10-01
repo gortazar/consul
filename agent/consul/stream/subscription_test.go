@@ -38,7 +38,7 @@ func TestSubscription(t *testing.T) {
 	require.True(t, elapsed < 200*time.Millisecond,
 		"Event should have been delivered immediately, took %s", elapsed)
 	require.Len(t, got, 1)
-	require.Equal(t, index, got[0].Index)
+	require.Equal(t, index, got.First().Index)
 
 	// Schedule an event publish in a while
 	index++
@@ -56,7 +56,7 @@ func TestSubscription(t *testing.T) {
 	require.True(t, elapsed < 2*time.Second,
 		"Event should have been delivered after short time, took %s", elapsed)
 	require.Len(t, got, 1)
-	require.Equal(t, index, got[0].Index)
+	require.Equal(t, index, got.First().Index)
 
 	// Event with wrong key should not be delivered. Deliver a good message right
 	// so we don't have to block test thread forever or cancel func yet.
@@ -72,8 +72,8 @@ func TestSubscription(t *testing.T) {
 	require.True(t, elapsed < 200*time.Millisecond,
 		"Event should have been delivered immediately, took %s", elapsed)
 	require.Len(t, got, 1)
-	require.Equal(t, index, got[0].Index)
-	require.Equal(t, "test", got[0].Key)
+	require.Equal(t, index, got.First().Index)
+	require.Equal(t, "test", got.First().Key)
 
 	// Cancelling the subscription context should unblock Next
 	start = time.Now()
@@ -118,7 +118,7 @@ func TestSubscription_Close(t *testing.T) {
 	require.True(t, elapsed < 200*time.Millisecond,
 		"Event should have been delivered immediately, took %s", elapsed)
 	require.Len(t, got, 1)
-	require.Equal(t, index, got[0].Index)
+	require.Equal(t, index, got.First().Index)
 
 	// Schedule a Close simulating the server deciding this subscroption
 	// needs to reset (e.g. on ACL perm change).
@@ -141,56 +141,47 @@ func publishTestEvent(index uint64, b *eventBuffer, key string) {
 	// Don't care about the event payload for now just the semantics of publishing
 	// something. This is not a valid stream in the end-to-end streaming protocol
 	// but enough to test subscription mechanics.
-	e := Event{
-		Index: index,
-		Topic: testTopic,
-		Key:   key,
-	}
-	b.Append([]Event{e})
+	b.Append(Event{Index: index, Topic: testTopic, Key: key})
 }
 
 func TestFilter_NoKey(t *testing.T) {
 	events := make([]Event, 0, 5)
 	events = append(events, Event{Key: "One"}, Event{Key: "Two"})
 
-	actual := filter("", events)
+	actual := filter("", EventBatch(events))
 	require.Equal(t, events, actual)
 
 	// test that a new array was not allocated
-	require.Equal(t, cap(actual), 5)
+	require.Equal(t, cap([]Event(actual.(EventBatch))), 5)
 }
 
 func TestFilter_WithKey_AllEventsMatch(t *testing.T) {
 	events := make([]Event, 0, 5)
 	events = append(events, Event{Key: "Same"}, Event{Key: "Same"})
 
-	actual := filter("Same", events)
+	actual := filter("Same", EventBatch(events))
 	require.Equal(t, events, actual)
 
 	// test that a new array was not allocated
-	require.Equal(t, cap(actual), 5)
+	require.Equal(t, cap([]Event(actual.(EventBatch))), 5)
 }
 
 func TestFilter_WithKey_SomeEventsMatch(t *testing.T) {
 	events := make([]Event, 0, 5)
 	events = append(events, Event{Key: "Same"}, Event{Key: "Other"}, Event{Key: "Same"})
 
-	actual := filter("Same", events)
+	actual := filter("Same", EventBatch(events))
 	expected := []Event{{Key: "Same"}, {Key: "Same"}}
 	require.Equal(t, expected, actual)
 
 	// test that a new array was allocated with the correct size
-	require.Equal(t, cap(actual), 2)
+	require.Equal(t, cap([]Event(actual.(EventBatch))), 2)
 }
 
 func TestFilter_WithKey_NoEventsMatch(t *testing.T) {
 	events := make([]Event, 0, 5)
 	events = append(events, Event{Key: "Same"}, Event{Key: "Same"})
 
-	actual := filter("Other", events)
-	var expected []Event
-	require.Equal(t, expected, actual)
-
-	// test that no array was allocated
-	require.Equal(t, cap(actual), 0)
+	actual := filter("Other", EventBatch(events))
+	require.Equal(t, nil, actual)
 }

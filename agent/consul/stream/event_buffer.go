@@ -77,7 +77,7 @@ func newEventBuffer() *eventBuffer {
 // mutations to the events as they may have been exposed to subscribers in other
 // goroutines. Append only supports a single concurrent caller and must be
 // externally synchronized with other Append, AppendBuffer or AppendErr calls.
-func (b *eventBuffer) Append(events []Event) {
+func (b *eventBuffer) Append(events Events) {
 	b.AppendItem(newBufferItem(events))
 }
 
@@ -132,7 +132,7 @@ type bufferItem struct {
 	// should check and skip nil Events at any point in the buffer. It will also
 	// be nil if the producer appends an Error event because they can't complete
 	// the request to populate the buffer. Err will be non-nil in this case.
-	Events []Event
+	Events Events
 
 	// Err is non-nil if the producer can't complete their task and terminates the
 	// buffer. Subscribers should return the error to clients and cease attempting
@@ -161,7 +161,7 @@ type bufferLink struct {
 
 // newBufferItem returns a blank buffer item with a link and chan ready to have
 // the fields set and be appended to a buffer.
-func newBufferItem(events []Event) *bufferItem {
+func newBufferItem(events Events) *bufferItem {
 	return &bufferItem{
 		link:   &bufferLink{ch: make(chan struct{})},
 		Events: events,

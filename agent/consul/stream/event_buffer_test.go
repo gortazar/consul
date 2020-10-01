@@ -40,7 +40,7 @@ func TestEventBufferFuzz(t *testing.T) {
 				Index: uint64(i), // Indexes should be contiguous
 				Topic: testTopic,
 			}
-			b.Append([]Event{e})
+			b.Append(e)
 			// Sleep sometimes for a while to let some subscribers catch up
 			wait := time.Duration(z.Uint64()) * time.Millisecond
 			time.Sleep(wait)
@@ -66,9 +66,9 @@ func TestEventBufferFuzz(t *testing.T) {
 						expect, err)
 					return
 				}
-				if item.Events[0].Index != expect {
+				if item.Events.First().Index != expect {
 					errCh <- fmt.Errorf("subscriber %05d got bad event want=%d, got=%d", i,
-						expect, item.Events[0].Index)
+						expect, item.Events.First().Index)
 					return
 				}
 				expect++

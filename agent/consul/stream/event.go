@@ -33,6 +33,18 @@ func (e Event) IsEndOfEmptySnapshot() bool {
 	return e.Payload == endOfEmptySnapshot{}
 }
 
+func (e Event) Slice() []Event {
+	return []Event{e}
+}
+
+func (e Event) Empty() bool {
+	return false
+}
+
+func (e Event) First() Event {
+	return e
+}
+
 type endOfSnapshot struct{}
 
 type endOfEmptySnapshot struct{}
@@ -49,4 +61,33 @@ type closeSubscriptionPayload struct {
 // tokenSecretIDs may contain duplicate IDs.
 func NewCloseSubscriptionEvent(tokenSecretIDs []string) Event {
 	return Event{Payload: closeSubscriptionPayload{tokensSecretIDs: tokenSecretIDs}}
+}
+
+// EventBatch is a slice of Events. It is used to wrap a slice of that it
+// implements the Events interface.
+type EventBatch []Event
+
+func (b EventBatch) Slice() []Event {
+	return b
+}
+
+func (b EventBatch) Empty() bool {
+	return len(b) == 0
+}
+
+func (b EventBatch) First() Event {
+	if len(b) == 0 {
+		return Event{}
+	}
+	return b[0]
+}
+
+// Events is an interface for types which can be represented as a slice of events.
+// It exists as a convenient interface for receiving either a single Event or
+// a slice of []Event.
+// Both Event and EventBatch implement this interface.
+type Events interface {
+	Slice() []Event
+	Empty() bool
+	First() Event
 }

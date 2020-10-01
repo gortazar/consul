@@ -32,27 +32,26 @@ func TestEventPublisher_PublishChangesAndSubscribe_WithSnapshot(t *testing.T) {
 
 	result := nextResult(t, eventCh)
 	require.NoError(t, result.Err)
-	expected := []Event{{Payload: "snapshot-event-payload", Key: "sub-key"}}
+	expected := Event{Payload: "snapshot-event-payload", Key: "sub-key"}
 	require.Equal(t, expected, result.Events)
 
 	result = nextResult(t, eventCh)
-	require.Len(t, result.Events, 1)
-	require.True(t, result.Events[0].IsEndOfSnapshot())
+	require.Len(t, result.Events.Slice(), 1)
+	require.True(t, result.Events.First().IsEndOfSnapshot())
 
 	// Now subscriber should block waiting for updates
 	assertNoResult(t, eventCh)
 
-	events := []Event{{
+	publisher.Publish(Event{
 		Topic:   testTopic,
 		Key:     "sub-key",
 		Payload: "the-published-event-payload",
-	}}
-	publisher.Publish(events)
+	})
 
 	// Subscriber should see the published event
 	result = nextResult(t, eventCh)
 	require.NoError(t, result.Err)
-	expected = []Event{{Payload: "the-published-event-payload", Key: "sub-key", Topic: testTopic}}
+	expected = Event{Payload: "the-published-event-payload", Key: "sub-key", Topic: testTopic}
 	require.Equal(t, expected, result.Events)
 }
 
@@ -62,7 +61,7 @@ func newTestSnapshotHandlers() SnapshotHandlers {
 			if req.Topic != testTopic {
 				return 0, fmt.Errorf("unexpected topic: %v", req.Topic)
 			}
-			buf.Append([]Event{{Payload: "snapshot-event-payload", Key: "sub-key"}})
+			buf.Append(Event{Payload: "snapshot-event-payload", Key: "sub-key"})
 			return 1, nil
 		},
 	}
@@ -86,7 +85,7 @@ func consumeSubscription(ctx context.Context, sub *Subscription) <-chan subNextR
 }
 
 type subNextResult struct {
-	Events []Event
+	Events Events
 	Err    error
 }
 
@@ -107,7 +106,7 @@ func assertNoResult(t *testing.T, eventCh <-chan subNextResult) {
 	case next := <-eventCh:
 		require.NoError(t, next.Err)
 		require.Len(t, next.Events, 1)
-		t.Fatalf("received unexpected event: %#v", next.Events[0].Payload)
+		t.Fatalf("received unexpected event: %#v", next.Events.First().Payload)
 	case <-time.After(100 * time.Millisecond):
 	}
 }
@@ -148,7 +147,7 @@ func consumeSub(ctx context.Context, sub *Subscription) error {
 		switch {
 		case err != nil:
 			return err
-		case len(events) == 1 && events[0].IsEndOfSnapshot():
+		case events.First().IsEndOfSnapshot():
 			continue
 		}
 	}

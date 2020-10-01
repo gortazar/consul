@@ -39,12 +39,12 @@ func newEventSnapshot(req *SubscribeRequest, topicBufferHead *bufferItem, fn Sna
 			return
 		}
 		// We wrote the snapshot events to the buffer, send the "end of snapshot" event
-		s.snapBuffer.Append([]Event{{
+		s.snapBuffer.Append(Event{
 			Topic:   req.Topic,
 			Key:     req.Key,
 			Index:   idx,
 			Payload: endOfSnapshot{},
-		}})
+		})
 		s.spliceFromTopicBuffer(topicBufferHead, idx)
 	}()
 	return s
@@ -74,7 +74,7 @@ func (s *eventSnapshot) spliceFromTopicBuffer(topicBufferHead *bufferItem, idx u
 			s.snapBuffer.AppendItem(next)
 			return
 
-		case len(next.Events) > 0 && next.Events[0].Index > idx:
+		case !next.Events.Empty() && next.Events.First().Index > idx:
 			// We've found an update in the topic buffer that happened after our
 			// snapshot was taken, splice it into the snapshot buffer so subscribers
 			// can continue to read this and others after it.

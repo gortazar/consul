@@ -67,7 +67,7 @@ func newSubscription(req *SubscribeRequest, item *bufferItem, unsub func()) *Sub
 
 // Next returns the next set of events to deliver. It must only be called from a
 // single goroutine concurrently as it mutates the Subscription.
-func (s *Subscription) Next(ctx context.Context) ([]Event, error) {
+func (s *Subscription) Next(ctx context.Context) (Events, error) {
 	if atomic.LoadUint32(&s.state) == subscriptionStateClosed {
 		return nil, ErrSubscriptionClosed
 	}
@@ -83,7 +83,7 @@ func (s *Subscription) Next(ctx context.Context) ([]Event, error) {
 		s.currentItem = next
 
 		events := filter(s.req.Key, next.Events)
-		if len(events) == 0 {
+		if events == nil || events.Empty() {
 			continue
 		}
 		return events, nil
@@ -91,13 +91,13 @@ func (s *Subscription) Next(ctx context.Context) ([]Event, error) {
 }
 
 // filter events to only those that match the key exactly.
-func filter(key string, events []Event) []Event {
-	if key == "" || len(events) == 0 {
+func filter(key string, events Events) Events {
+	if key == "" || events == nil || events.Empty() {
 		return events
 	}
 
 	var count int
-	for _, e := range events {
+	for _, e := range events.Slice() {
 		if key == e.Key {
 			count++
 		}
@@ -107,17 +107,17 @@ func filter(key string, events []Event) []Event {
 	switch count {
 	case 0:
 		return nil
-	case len(events):
+	case len(events.Slice()):
 		return events
 	}
 
 	result := make([]Event, 0, count)
-	for _, e := range events {
+	for _, e := range events.Slice() {
 		if key == e.Key {
 			result = append(result, e)
 		}
 	}
-	return result
+	return EventBatch(result)
 }
 
 // Close the subscription. Subscribers will receive an error when they call Next,

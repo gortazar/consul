@@ -84,7 +84,7 @@ func TestEventSnapshot(t *testing.T) {
 				// Use an instance index that's unique and should never appear in the
 				// output so we can be sure these were not included as they came before
 				// the snapshot.
-				tb.Append([]Event{newDefaultHealthEvent(index, 10000+i)})
+				tb.Append(newDefaultHealthEvent(index, 10000+i))
 			}
 
 			// Create eventSnapshot, (will call snFn in another goroutine). The
@@ -101,7 +101,7 @@ func TestEventSnapshot(t *testing.T) {
 			for i := 0; i < tc.updatesAfterSnap; i++ {
 				index := snapIndex + 1 + uint64(i)
 				// Use an instance index that's unique.
-				tb.Append([]Event{newDefaultHealthEvent(index, 20000+i)})
+				tb.Append(newDefaultHealthEvent(index, 20000+i))
 			}
 
 			// Now read the snapshot buffer until we've received everything we expect.
@@ -121,13 +121,13 @@ func TestEventSnapshot(t *testing.T) {
 				require.NoError(t, err,
 					"current state: snapDone=%v snapIDs=%s updateIDs=%s", snapDone,
 					snapIDs, updateIDs)
-				if len(curItem.Events) == 0 {
+				if curItem.Events.Empty() {
 					// An item without an error or events is a bufferItem.NextLink event.
 					// A subscription handles this by proceeding to the next item,
 					// so we do the same here.
 					continue
 				}
-				e := curItem.Events[0]
+				e := curItem.Events.First()
 				switch {
 				case snapDone:
 					payload, ok := e.Payload.(string)
@@ -167,7 +167,7 @@ func testHealthConsecutiveSnapshotFn(size int, index uint64) SnapshotFunc {
 			// Event content is arbitrary we are just using Health because it's the
 			// first type defined. We just want a set of things with consecutive
 			// names.
-			buf.Append([]Event{newDefaultHealthEvent(index, i)})
+			buf.Append(newDefaultHealthEvent(index, i))
 		}
 		return index, nil
 	}

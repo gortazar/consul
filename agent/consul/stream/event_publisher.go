@@ -36,7 +36,7 @@ type EventPublisher struct {
 	// publishCh is used to send messages from an active txn to a goroutine which
 	// publishes events, so that publishing can happen asynchronously from
 	// the Commit call in the FSM hot path.
-	publishCh chan changeEvents
+	publishCh chan Events
 
 	snapshotHandlers SnapshotHandlers
 }
@@ -54,10 +54,6 @@ type subscriptions struct {
 	byToken map[string]map[*SubscribeRequest]*Subscription
 }
 
-type changeEvents struct {
-	events []Event
-}
-
 // SnapshotHandlers is a mapping of Topic to a function which produces a snapshot
 // of events for the SubscribeRequest. Events are appended to the snapshot using SnapshotAppender.
 // The nil Topic is reserved and should not be used.
@@ -71,7 +67,7 @@ type SnapshotFunc func(SubscribeRequest, SnapshotAppender) (index uint64, err er
 type SnapshotAppender interface {
 	// Append events to the snapshot. Every event in the slice must have the same
 	// Index, indicating that it is part of the same raft transaction.
-	Append(events []Event)
+	Append(events Events)
 }
 
 // NewEventPublisher returns an EventPublisher for publishing change events.
@@ -84,7 +80,7 @@ func NewEventPublisher(ctx context.Context, handlers SnapshotHandlers, snapCache
 		snapCacheTTL: snapCacheTTL,
 		topicBuffers: make(map[Topic]*eventBuffer),
 		snapCache:    make(map[Topic]map[string]*eventSnapshot),
-		publishCh:    make(chan changeEvents, 64),
+		publishCh:    make(chan Events, 64),
 		subscriptions: &subscriptions{
 			byToken: make(map[string]map[*SubscribeRequest]*Subscription),
 		},
@@ -97,9 +93,9 @@ func NewEventPublisher(ctx context.Context, handlers SnapshotHandlers, snapCache
 }
 
 // Publish events to all subscribers of the event Topic.
-func (e *EventPublisher) Publish(events []Event) {
-	if len(events) > 0 {
-		e.publishCh <- changeEvents{events: events}
+func (e *EventPublisher) Publish(events Events) {
+	if !events.Empty() {
+		e.publishCh <- events
 	}
 }
 
@@ -117,9 +113,9 @@ func (e *EventPublisher) handleUpdates(ctx context.Context) {
 
 // sendEvents sends the given events to any applicable topic listeners, as well
 // as any ACL update events to cause affected listeners to reset their stream.
-func (e *EventPublisher) sendEvents(update changeEvents) {
+func (e *EventPublisher) sendEvents(update Events) {
 	eventsByTopic := make(map[Topic][]Event)
-	for _, event := range update.events {
+	for _, event := range update.Slice() {
 		if unsubEvent, ok := event.Payload.(closeSubscriptionPayload); ok {
 			e.subscriptions.closeSubscriptionsForTokens(unsubEvent.tokensSecretIDs)
 			continue
@@ -131,7 +127,7 @@ func (e *EventPublisher) sendEvents(update changeEvents) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	for topic, events := range eventsByTopic {
-		e.getTopicBuffer(topic).Append(events)
+		e.getTopicBuffer(topic).Append(EventBatch(events))
 	}
 }
 
@@ -173,7 +169,7 @@ func (e *EventPublisher) Subscribe(req *SubscribeRequest) (*Subscription, error)
 	// See if we need a snapshot
 	topicHead := buf.Head()
 	var sub *Subscription
-	if req.Index > 0 && len(topicHead.Events) > 0 && topicHead.Events[0].Index == req.Index {
+	if req.Index > 0 && topicHead.Events != nil && topicHead.Events.First().Index == req.Index {
 		// No need for a snapshot, send the "end of empty snapshot" message to signal to
 		// client its cache is still good, then follow along from here in the topic.
 		buf := newEventBuffer()
@@ -182,12 +178,12 @@ func (e *EventPublisher) Subscribe(req *SubscribeRequest) (*Subscription, error)
 		// starting point for the subscription.
 		subHead := buf.Head()
 
-		buf.Append([]Event{{
+		buf.Append(Event{
 			Index:   req.Index,
 			Topic:   req.Topic,
 			Key:     req.Key,
 			Payload: endOfEmptySnapshot{},
-		}})
+		})
 
 		// Now splice the rest of the topic buffer on so the subscription will
 		// continue to see future updates in the topic buffer.
