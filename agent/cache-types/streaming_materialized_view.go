@@ -125,7 +125,7 @@ func NewMaterializedViewFromFetch(deps ViewDeps) *Materializer {
 		// tests.
 		// TODO: pass this in
 		retryWaiter: retry.NewWaiter(1, 0, SubscribeBackoffMax,
-			retry.NewJitterRandomStagger(100)),
+			retry.NewJitter(100)),
 	}
 	v.reset()
 	return v
@@ -254,7 +254,7 @@ func (v *Materializer) runSubscription(ctx context.Context) error {
 			v.index = event.Index
 			// We have a good result, reset the error flag
 			v.err = nil
-			v.retryWaiter.Reset()
+			v.retryWaiter.Success()
 			// Notify watchers of the update to the view
 			v.notifyUpdateLocked()
 			v.l.Unlock()
@@ -298,7 +298,7 @@ func (v *Materializer) runSubscription(ctx context.Context) error {
 			v.index = event.Index
 			// We have a good result, reset the error flag
 			v.err = nil
-			v.retryWaiter.Reset()
+			v.retryWaiter.Success()
 			v.notifyUpdateLocked()
 			v.l.Unlock()
 		} else {
@@ -324,7 +324,7 @@ func (v *Materializer) reset() {
 	v.index = 0
 	v.snapshotDone = false
 	v.err = nil
-	v.retryWaiter.Reset()
+	v.retryWaiter.Success()
 }
 
 // notifyUpdateLocked closes the current update channel and recreates a new
