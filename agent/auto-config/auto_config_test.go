@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/hashicorp/consul/agent/cache"
 	cachetype "github.com/hashicorp/consul/agent/cache-types"
 	"github.com/hashicorp/consul/agent/config"
@@ -18,13 +21,11 @@ import (
 	"github.com/hashicorp/consul/agent/metadata"
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/agent/token"
-	"github.com/hashicorp/consul/lib"
+	retry2 "github.com/hashicorp/consul/lib/retry"
 	"github.com/hashicorp/consul/proto/pbautoconf"
 	"github.com/hashicorp/consul/proto/pbconfig"
 	"github.com/hashicorp/consul/sdk/testutil"
 	"github.com/hashicorp/consul/sdk/testutil/retry"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 type configLoader struct {
@@ -412,7 +413,7 @@ func TestInitialConfiguration_retries(t *testing.T) {
 	mcfg.Config.Loader = loader.Load
 
 	// reduce the retry wait times to make this test run faster
-	mcfg.Config.Waiter = lib.NewRetryWaiter(2, 0, 1*time.Millisecond, nil)
+	mcfg.Config.Waiter = retry2.NewRetryWaiter(2, 0, 1*time.Millisecond, nil)
 
 	indexedRoots, cert, extraCerts := mcfg.setupInitialTLS(t, "autoconf", "dc1", "secret")
 

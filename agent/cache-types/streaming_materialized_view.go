@@ -11,8 +11,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/hashicorp/consul/lib/retry"
+
 	"github.com/hashicorp/consul/agent/cache"
-	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/proto/pbsubscribe"
 )
 
@@ -90,7 +91,7 @@ type Materializer struct {
 	view         View
 	snapshotDone bool
 	updateCh     chan struct{}
-	retryWaiter  *lib.RetryWaiter
+	retryWaiter  *retry.Waiter
 	err          error
 }
 
@@ -123,8 +124,8 @@ func NewMaterializedViewFromFetch(deps ViewDeps) *Materializer {
 		// Allow first retry without wait, this is important and we rely on it in
 		// tests.
 		// TODO: pass this in
-		retryWaiter: lib.NewRetryWaiter(1, 0, SubscribeBackoffMax,
-			lib.NewJitterRandomStagger(100)),
+		retryWaiter: retry.NewRetryWaiter(1, 0, SubscribeBackoffMax,
+			retry.NewJitterRandomStagger(100)),
 	}
 	v.reset()
 	return v
