@@ -3,9 +3,12 @@ package cachetype
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/go-bexpr"
 	"github.com/hashicorp/go-hclog"
+
+	"github.com/hashicorp/consul/lib/retry"
 
 	"github.com/hashicorp/consul/agent/cache"
 	"github.com/hashicorp/consul/agent/structs"
@@ -76,10 +79,16 @@ func (c *StreamingHealthServices) getMaterializedView(opts cache.FetchOptions, r
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
-	view := NewMaterializedViewFromFetch(ViewDeps{
-		State:   state,
-		Client:  c.client,
-		Logger:  c.logger,
+	view := NewMaterializer(ViewDeps{
+		State:  state,
+		Client: c.client,
+		Logger: c.logger,
+		Waiter: &retry.Waiter{
+			MinFailures: 1,
+			MinWait:     0,
+			MaxWait:     60 * time.Second,
+			Jitter:      retry.NewJitter(100),
+		},
 		Request: r,
 		Stop:    cancel,
 		Done:    ctx.Done(),

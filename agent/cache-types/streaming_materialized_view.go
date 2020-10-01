@@ -11,9 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/hashicorp/consul/lib/retry"
-
 	"github.com/hashicorp/consul/agent/cache"
+	"github.com/hashicorp/consul/lib/retry"
 	"github.com/hashicorp/consul/proto/pbsubscribe"
 )
 
@@ -41,12 +40,6 @@ type View interface {
 }
 
 type Filter func(seq interface{}) (interface{}, error)
-
-// temporary is a private interface as used by net and other std lib packages to
-// show error types represent temporary/recoverable errors.
-type temporary interface {
-	Temporary() bool
-}
 
 // resetErr represents a server request to reset the subscription, it's typed so
 // we can mark it as temporary and so attempt to retry first time without
@@ -81,7 +74,7 @@ type Request struct {
 // the scenes until the cache result is discarded when TTL expires.
 type Materializer struct {
 	// Properties above the lock are immutable after the view is constructed in
-	// NewMaterializedViewFromFetch and must not be modified.
+	// NewMaterializer and must not be modified.
 	deps ViewDeps
 
 	// l protects the mutable state - all fields below it must only be accessed
@@ -95,10 +88,12 @@ type Materializer struct {
 	err          error
 }
 
+// TODO: rename
 type ViewDeps struct {
 	State   View
 	Client  StreamingClient
 	Logger  hclog.Logger
+	Waiter  *retry.Waiter
 	Request Request
 	Stop    func()
 	Done    <-chan struct{}
@@ -110,30 +105,22 @@ type StreamingClient interface {
 	Subscribe(ctx context.Context, in *pbsubscribe.SubscribeRequest, opts ...grpc.CallOption) (pbsubscribe.StateChangeSubscription_SubscribeClient, error)
 }
 
-// NewMaterializedViewFromFetch retrieves an existing view from the cache result
+// NewMaterializer retrieves an existing view from the cache result
 // state if one exists, otherwise creates a new one. Note that the returned view
 // MUST have Close called eventually to avoid leaking resources. Typically this
 // is done automatically if the view is returned in a cache.Result.State when
 // the cache evicts the result. If the view is not returned in a result state
 // though Close must be called some other way to avoid leaking the goroutine and
 // memory.
-func NewMaterializedViewFromFetch(deps ViewDeps) *Materializer {
+func NewMaterializer(deps ViewDeps) *Materializer {
 	v := &Materializer{
-		deps: deps,
-		view: deps.State,
-		// Allow first retry without wait, this is important and we rely on it in
-		// tests.
-		// TODO: pass this in
-		retryWaiter: retry.NewWaiter(1, 0, SubscribeBackoffMax,
-			retry.NewJitter(100)),
+		deps:        deps,
+		view:        deps.State,
+		retryWaiter: deps.Waiter,
 	}
 	v.reset()
 	return v
 }
-
-// SubscribeBackoffMax controls the range of exponential backoff when errors
-// are returned from subscriptions.
-const SubscribeBackoffMax = 60 * time.Second
 
 // Close implements io.Close and discards view state and stops background view
 // maintenance.
@@ -151,10 +138,8 @@ func (v *Materializer) run(ctx context.Context) {
 
 	// Loop in case stream resets and we need to start over
 	for {
-		// Run a subscribe call until it fails
 		err := v.runSubscription(ctx)
 		if err != nil {
-			// Check if the view closed
 			if ctx.Err() != nil {
 				// Err doesn't matter and is likely just context cancelled
 				return
@@ -174,8 +159,6 @@ func (v *Materializer) run(ctx context.Context) {
 			failures := v.retryWaiter.Failures()
 			v.l.Unlock()
 
-			// Exponential backoff to avoid hammering servers if they are closing
-			// conns because of overload or resetting based on errors.
 			v.deps.Logger.Error("subscribe call failed",
 				"err", err,
 				"topic", v.deps.Request.Topic,
@@ -190,7 +173,12 @@ func (v *Materializer) run(ctx context.Context) {
 		}
 		// Loop and keep trying to resume subscription after error
 	}
+}
 
+// temporary is a private interface as used by net and other std lib packages to
+// show error types represent temporary/recoverable errors.
+type temporary interface {
+	Temporary() bool
 }
 
 // runSubscription opens a new subscribe streaming call to the servers and runs
