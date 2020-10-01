@@ -248,7 +248,7 @@ func TestAutoEncrypt_InitialCerts(t *testing.T) {
 		resp.VerifyServerHostname = true
 	})
 
-	mcfg.Config.Waiter = retry.NewRetryWaiter(2, 0, 1*time.Millisecond, nil)
+	mcfg.Config.Waiter = retry.NewWaiter(2, 0, 1*time.Millisecond, nil)
 
 	ac := AutoConfig{
 		config: &config.RuntimeConfig{

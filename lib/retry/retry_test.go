@@ -51,7 +51,7 @@ func TestRetryWaiter_calculateWait(t *testing.T) {
 	t.Run("Defaults", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 0, 0, nil)
+		rw := NewWaiter(0, 0, 0, nil)
 
 		require.Equal(t, 0*time.Nanosecond, rw.calculateWait())
 		rw.failures += 1
@@ -65,7 +65,7 @@ func TestRetryWaiter_calculateWait(t *testing.T) {
 	t.Run("Minimum Wait", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 5*time.Second, 0, nil)
+		rw := NewWaiter(0, 5*time.Second, 0, nil)
 
 		require.Equal(t, 5*time.Second, rw.calculateWait())
 		rw.failures += 1
@@ -81,7 +81,7 @@ func TestRetryWaiter_calculateWait(t *testing.T) {
 	t.Run("Minimum Failures", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(5, 0, 0, nil)
+		rw := NewWaiter(5, 0, 0, nil)
 		require.Equal(t, 0*time.Nanosecond, rw.calculateWait())
 		rw.failures += 5
 		require.Equal(t, 0*time.Nanosecond, rw.calculateWait())
@@ -92,7 +92,7 @@ func TestRetryWaiter_calculateWait(t *testing.T) {
 	t.Run("Maximum Wait", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 0, 5*time.Second, nil)
+		rw := NewWaiter(0, 0, 5*time.Second, nil)
 		require.Equal(t, 0*time.Nanosecond, rw.calculateWait())
 		rw.failures += 1
 		require.Equal(t, 1*time.Second, rw.calculateWait())
@@ -113,7 +113,7 @@ func TestRetryWaiter_WaitChans(t *testing.T) {
 	t.Run("Minimum Wait - Success", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 250*time.Millisecond, 0, nil)
+		rw := NewWaiter(0, 250*time.Millisecond, 0, nil)
 
 		select {
 		case <-time.After(200 * time.Millisecond):
@@ -125,7 +125,7 @@ func TestRetryWaiter_WaitChans(t *testing.T) {
 	t.Run("Minimum Wait - WaitIf", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 250*time.Millisecond, 0, nil)
+		rw := NewWaiter(0, 250*time.Millisecond, 0, nil)
 
 		select {
 		case <-time.After(200 * time.Millisecond):
@@ -137,7 +137,7 @@ func TestRetryWaiter_WaitChans(t *testing.T) {
 	t.Run("Minimum Wait - WaitIfErr", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 250*time.Millisecond, 0, nil)
+		rw := NewWaiter(0, 250*time.Millisecond, 0, nil)
 
 		select {
 		case <-time.After(200 * time.Millisecond):
@@ -149,7 +149,7 @@ func TestRetryWaiter_WaitChans(t *testing.T) {
 	t.Run("Maximum Wait - Failed", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 0, 250*time.Millisecond, nil)
+		rw := NewWaiter(0, 0, 250*time.Millisecond, nil)
 
 		select {
 		case <-time.After(500 * time.Millisecond):
@@ -161,7 +161,7 @@ func TestRetryWaiter_WaitChans(t *testing.T) {
 	t.Run("Maximum Wait - WaitIf", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 0, 250*time.Millisecond, nil)
+		rw := NewWaiter(0, 0, 250*time.Millisecond, nil)
 
 		select {
 		case <-time.After(500 * time.Millisecond):
@@ -173,7 +173,7 @@ func TestRetryWaiter_WaitChans(t *testing.T) {
 	t.Run("Maximum Wait - WaitIfErr", func(t *testing.T) {
 		t.Parallel()
 
-		rw := NewRetryWaiter(0, 0, 250*time.Millisecond, nil)
+		rw := NewWaiter(0, 0, 250*time.Millisecond, nil)
 
 		select {
 		case <-time.After(500 * time.Millisecond):

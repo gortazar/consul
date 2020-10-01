@@ -11,7 +11,7 @@ const (
 	defaultMaxWait     = 2 * time.Minute
 )
 
-// Interface used for offloading jitter calculations from the RetryWaiter
+// Interface used for offloading jitter calculations from the Waiter
 type Jitter interface {
 	AddJitter(baseTime time.Duration) time.Duration
 }
@@ -28,12 +28,9 @@ func NewJitterRandomStagger(percent int) *JitterRandomStagger {
 		percent = 0
 	}
 
-	return &JitterRandomStagger{
-		percent: int64(percent),
-	}
+	return &JitterRandomStagger{percent: int64(percent)}
 }
 
-// Implments the Jitter interface
 func (j *JitterRandomStagger) AddJitter(baseTime time.Duration) time.Duration {
 	if j.percent == 0 {
 		return baseTime
@@ -54,8 +51,9 @@ type Waiter struct {
 	failures    uint
 }
 
-// Creates a new RetryWaiter
-func NewRetryWaiter(minFailures int, minWait, maxWait time.Duration, jitter Jitter) *Waiter {
+// Creates a Waiter
+// Deprecated: create a Waiter by setting fields on the struck.
+func NewWaiter(minFailures int, minWait, maxWait time.Duration, jitter Jitter) *Waiter {
 	if minFailures < 0 {
 		minFailures = defaultMinFailures
 	}
@@ -144,9 +142,9 @@ func (rw *Waiter) Failures() int {
 	return int(rw.failures)
 }
 
-// WaitIf is a convenice method to record whether the last
+// WaitIf is a convenience method to record whether the last
 // operation was a success or failure and return a chan that
-// will be selectablw when the next operation can be done.
+// will be selectable when the next operation can be done.
 func (rw *Waiter) WaitIf(failure bool) <-chan struct{} {
 	if failure {
 		return rw.Failed()

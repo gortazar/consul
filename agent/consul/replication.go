@@ -76,7 +76,7 @@ func NewReplicator(config *ReplicatorConfig) (*Replicator, error) {
 	if minFailures < 0 {
 		minFailures = 0
 	}
-	waiter := retry.NewRetryWaiter(minFailures, 0*time.Second, maxWait, retry.NewJitterRandomStagger(10))
+	waiter := retry.NewWaiter(minFailures, 0*time.Second, maxWait, retry.NewJitterRandomStagger(10))
 	return &Replicator{
 		limiter:          limiter,
 		waiter:           waiter,

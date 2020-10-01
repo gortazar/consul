@@ -124,7 +124,7 @@ func NewMaterializedViewFromFetch(deps ViewDeps) *Materializer {
 		// Allow first retry without wait, this is important and we rely on it in
 		// tests.
 		// TODO: pass this in
-		retryWaiter: retry.NewRetryWaiter(1, 0, SubscribeBackoffMax,
+		retryWaiter: retry.NewWaiter(1, 0, SubscribeBackoffMax,
 			retry.NewJitterRandomStagger(100)),
 	}
 	v.reset()
