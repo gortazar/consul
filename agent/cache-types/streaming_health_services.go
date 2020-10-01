@@ -93,7 +93,7 @@ func (c *StreamingHealthServices) SupportsBlocking() bool {
 	return true
 }
 
-func newHealthViewState(filterExpr string) (MaterializedViewState, error) {
+func newHealthViewState(filterExpr string) (View, error) {
 	s := &healthViewState{state: make(map[string]structs.CheckServiceNode)}
 
 	// We apply filtering to the raw CheckServiceNodes before we are done mutating
@@ -115,7 +115,7 @@ func (c *StreamingHealthServices) Logger() hclog.Logger {
 	return c.logger
 }
 
-// healthViewState implements MaterializedViewState for storing the view state
+// healthViewState implements View for storing the view state
 // of a service health result. We store it as a map to make updates and
 // deletions a little easier but we could just store a result type
 // (IndexedCheckServiceNodes) and update it in place for each event - that
@@ -126,7 +126,7 @@ type healthViewState struct {
 	filter *bexpr.Filter
 }
 
-// Update implements MaterializedViewState
+// Update implements View
 func (s *healthViewState) Update(events []*pbsubscribe.Event) error {
 	for _, event := range events {
 		serviceHealth := event.GetServiceHealth()
@@ -156,7 +156,7 @@ func (s *healthViewState) Update(events []*pbsubscribe.Event) error {
 	return nil
 }
 
-// Result implements MaterializedViewState
+// Result implements View
 func (s *healthViewState) Result(index uint64) (interface{}, error) {
 	var result structs.IndexedCheckServiceNodes
 	// Avoid a nil slice if there are no results in the view

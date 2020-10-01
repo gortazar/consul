@@ -22,9 +22,9 @@ const (
 	SubscribeBackoffMax = 60 * time.Second
 )
 
-// MaterializedViewState is the interface used to manage they type-specific
+// View is the interface used to manage they type-specific
 // materialized view logic.
-type MaterializedViewState interface {
+type View interface {
 	// Update is called when one or more events are received. The first call will
 	// include _all_ events in the initial snapshot which may be an empty set.
 	// Subsequent calls will contain one or more update events in the order they
@@ -40,7 +40,8 @@ type MaterializedViewState interface {
 	// indexes seen during Update.
 	Result(index uint64) (interface{}, error)
 
-	// Reset the state.
+	// Reset the view to the zero state, done in preparation for receiving a new
+	// snapshot.
 	Reset()
 }
 
@@ -76,7 +77,7 @@ type Request struct {
 
 // MaterializedView is a partial view of the state on servers, maintained via
 // streaming subscriptions. It is specialized for different cache types by
-// providing a MaterializedViewState that encapsulates the logic to update the
+// providing a View that encapsulates the logic to update the
 // state and format it as the correct result type.
 //
 // The MaterializedView object becomes the cache.Result.State for a streaming
@@ -86,13 +87,12 @@ type MaterializedView struct {
 	// Properties above the lock are immutable after the view is constructed in
 	// NewMaterializedViewFromFetch and must not be modified.
 	deps ViewDeps
-	ctx  context.Context
 
 	// l protects the mutable state - all fields below it must only be accessed
 	// while holding l.
 	l            sync.Mutex
 	index        uint64
-	state        MaterializedViewState
+	view         View
 	snapshotDone bool
 	updateCh     chan struct{}
 	retryWaiter  *lib.RetryWaiter
@@ -100,7 +100,7 @@ type MaterializedView struct {
 }
 
 type ViewDeps struct {
-	State   MaterializedViewState
+	State   View
 	Client  StreamingClient
 	Logger  hclog.Logger
 	Request Request
@@ -123,8 +123,8 @@ type StreamingClient interface {
 // memory.
 func NewMaterializedViewFromFetch(deps ViewDeps) *MaterializedView {
 	v := &MaterializedView{
-		deps:  deps,
-		state: deps.State,
+		deps: deps,
+		view: deps.State,
 		// Allow first retry without wait, this is important and we rely on it in
 		// tests.
 		// TODO: pass this in
@@ -238,7 +238,7 @@ func (v *MaterializedView) runSubscription(ctx context.Context) error {
 			v.l.Lock()
 
 			// Deliver snapshot events to the View state
-			if err := v.state.Update(snapshotEvents); err != nil {
+			if err := v.view.Update(snapshotEvents); err != nil {
 				v.l.Unlock()
 				// This error is kinda fatal to the view - we didn't apply some events
 				// the server sent us which means our view is now not in sync. The only
@@ -286,7 +286,7 @@ func (v *MaterializedView) runSubscription(ctx context.Context) error {
 		if snapshotDone {
 			// We've already got a snapshot, this is an update, deliver it right away.
 			v.l.Lock()
-			if err := v.state.Update(events); err != nil {
+			if err := v.view.Update(events); err != nil {
 				v.l.Unlock()
 				// This error is kinda fatal to the view - we didn't apply some events
 				// the server sent us which means our view is now not in sync. The only
@@ -317,7 +317,7 @@ func (v *MaterializedView) reset() {
 	v.l.Lock()
 	defer v.l.Unlock()
 
-	v.state.Reset()
+	v.view.Reset()
 	v.notifyUpdateLocked()
 	// Always start from zero when we have a new state so we load a snapshot from
 	// the servers.
@@ -345,7 +345,7 @@ func (v *MaterializedView) Fetch(opts cache.FetchOptions) (cache.FetchResult, er
 	// Get current view Result and index
 	v.l.Lock()
 	index := v.index
-	val, err := v.state.Result(v.index)
+	val, err := v.view.Result(v.index)
 	updateCh := v.updateCh
 	v.l.Unlock()
 
@@ -383,7 +383,7 @@ func (v *MaterializedView) Fetch(opts cache.FetchOptions) (cache.FetchResult, er
 			if fetchErr == nil {
 				// Only generate a new result if there was no error to avoid pointless
 				// work potentially shuffling the same data around.
-				result.Value, err = v.state.Result(v.index)
+				result.Value, err = v.view.Result(v.index)
 			}
 			v.l.Unlock()
 
