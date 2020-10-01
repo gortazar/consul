@@ -19,6 +19,7 @@ export default Route.extend({
       urls: this.settings.findBySlug('urls'),
       chain: null,
       proxies: [],
+      topology: null,
     })
       .then(model => {
         return ['connect-proxy', 'mesh-gateway', 'ingress-gateway', 'terminating-gateway'].includes(
