@@ -48,17 +48,21 @@ func (c *StreamingHealthServices) Fetch(opts cache.FetchOptions, req cache.Reque
 	}
 
 	srvReq := req.(*structs.ServiceSpecificRequest)
-	subReq := pbsubscribe.SubscribeRequest{
-		Topic:      pbsubscribe.Topic_ServiceHealth,
-		Key:        srvReq.ServiceName,
-		Token:      srvReq.Token,
-		Index:      srvReq.MinQueryIndex,
-		Datacenter: srvReq.Datacenter,
+	newReqFn := func(index uint64) pbsubscribe.SubscribeRequest {
+		req := pbsubscribe.SubscribeRequest{
+			Topic:      pbsubscribe.Topic_ServiceHealth,
+			Key:        srvReq.ServiceName,
+			Token:      srvReq.Token,
+			Datacenter: srvReq.Datacenter,
+			Index:      index,
+		}
+		if srvReq.Connect {
+			req.Topic = pbsubscribe.Topic_ServiceHealthConnect
+		}
+		return req
 	}
-	if srvReq.Connect {
-		subReq.Topic = pbsubscribe.Topic_ServiceHealthConnect
-	}
-	view, err := newMaterializer(c.deps, subReq, srvReq.Filter)
+
+	view, err := newMaterializer(c.deps, newReqFn, srvReq.Filter)
 	if err != nil {
 		return cache.FetchResult{}, err
 	}
@@ -67,7 +71,7 @@ func (c *StreamingHealthServices) Fetch(opts cache.FetchOptions, req cache.Reque
 
 func newMaterializer(
 	d MaterializerDeps,
-	r pbsubscribe.SubscribeRequest,
+	r func(uint64) pbsubscribe.SubscribeRequest,
 	filter string,
 ) (*submatview.Materializer, error) {
 	state, err := newHealthViewState(filter)
@@ -76,7 +80,7 @@ func newMaterializer(
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
 	view := submatview.NewMaterializer(submatview.MaterializerDeps{
-		State:  state,
+		View:   state,
 		Client: d.Client,
 		Logger: d.Logger,
 		Waiter: &retry.Waiter{

@@ -81,11 +81,11 @@ type Materializer struct {
 
 // TODO: rename
 type MaterializerDeps struct {
-	State   View
+	View    View
 	Client  StreamingClient
 	Logger  hclog.Logger
 	Waiter  *retry.Waiter
-	Request pbsubscribe.SubscribeRequest
+	Request func(index uint64) pbsubscribe.SubscribeRequest
 	Stop    func()
 	Done    <-chan struct{}
 }
@@ -106,7 +106,7 @@ type StreamingClient interface {
 func NewMaterializer(deps MaterializerDeps) *Materializer {
 	v := &Materializer{
 		deps:        deps,
-		view:        deps.State,
+		view:        deps.View,
 		retryWaiter: deps.Waiter,
 	}
 	v.reset()
@@ -123,46 +123,43 @@ func (v *Materializer) Close() error {
 }
 
 func (v *Materializer) Run(ctx context.Context) {
-	if ctx.Err() != nil {
-		return
-	}
-
-	// Loop in case stream resets and we need to start over
 	for {
-		err := v.runSubscription(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				// Err doesn't matter and is likely just context cancelled
-				return
-			}
-
-			v.l.Lock()
-			// If this is a temporary error and it's the first consecutive failure,
-			// retry to see if we can get a result without erroring back to clients.
-			// If it's non-temporary or a repeated failure return to clients while we
-			// retry to get back in a good state.
-			if _, ok := err.(temporary); !ok || v.retryWaiter.Failures() > 0 {
-				// Report error to blocked fetchers
-				v.err = err
-				v.notifyUpdateLocked()
-			}
-			waitCh := v.retryWaiter.Failed()
-			failures := v.retryWaiter.Failures()
-			v.l.Unlock()
-
-			v.deps.Logger.Error("subscribe call failed",
-				"err", err,
-				"topic", v.deps.Request.Topic,
-				"key", v.deps.Request.Key,
-				"failure_count", failures)
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-waitCh:
-			}
+		if ctx.Err() != nil {
+			return
 		}
-		// Loop and keep trying to resume subscription after error
+
+		req := v.deps.Request(v.index)
+		err := v.runSubscription(ctx, req)
+		if ctx.Err() != nil {
+			return
+		}
+
+		v.l.Lock()
+		// TODO: move this into a func
+		// If this is a temporary error and it's the first consecutive failure,
+		// retry to see if we can get a result without erroring back to clients.
+		// If it's non-temporary or a repeated failure return to clients while we
+		// retry to get back in a good state.
+		if _, ok := err.(temporary); !ok || v.retryWaiter.Failures() > 0 {
+			// Report error to blocked fetchers
+			v.err = err
+			v.notifyUpdateLocked()
+		}
+		waitCh := v.retryWaiter.Failed()
+		failures := v.retryWaiter.Failures()
+		v.l.Unlock()
+
+		v.deps.Logger.Error("subscribe call failed",
+			"err", err,
+			"topic", req.Topic,
+			"key", req.Key,
+			"failure_count", failures)
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-waitCh:
+		}
 	}
 }
 
@@ -174,18 +171,11 @@ type temporary interface {
 
 // runSubscription opens a new subscribe streaming call to the servers and runs
 // for it's lifetime or until the view is closed.
-func (v *Materializer) runSubscription(ctx context.Context) error {
+func (v *Materializer) runSubscription(ctx context.Context, req pbsubscribe.SubscribeRequest) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Copy the request template
-	req := v.deps.Request
-
 	v.l.Lock()
-
-	// Update request index to be the current view index in case we are resuming a
-	// broken stream.
-	req.Index = v.index
 
 	// Make local copy so we don't have to read with a lock for every event. We
 	// are the only goroutine that can update so we know it won't change without
