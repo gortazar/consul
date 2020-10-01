@@ -66,9 +66,9 @@ func (c *StreamingHealthServices) Fetch(opts cache.FetchOptions, req cache.Reque
 	return view.Fetch(opts)
 }
 
-func (c *StreamingHealthServices) getMaterializedView(opts cache.FetchOptions, r Request) (*MaterializedView, error) {
+func (c *StreamingHealthServices) getMaterializedView(opts cache.FetchOptions, r Request) (*Materializer, error) {
 	if opts.LastResult != nil && opts.LastResult.State != nil {
-		return opts.LastResult.State.(*MaterializedView), nil
+		return opts.LastResult.State.(*Materializer), nil
 	}
 
 	state, err := newHealthViewState(r.Filter)

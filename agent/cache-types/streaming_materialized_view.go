@@ -16,12 +16,6 @@ import (
 	"github.com/hashicorp/consul/proto/pbsubscribe"
 )
 
-const (
-	// SubscribeBackoffMax controls the range of exponential backoff when errors
-	// are returned from subscriptions.
-	SubscribeBackoffMax = 60 * time.Second
-)
-
 // View is the interface used to manage they type-specific
 // materialized view logic.
 type View interface {
@@ -75,15 +69,16 @@ type Request struct {
 	Filter string
 }
 
-// MaterializedView is a partial view of the state on servers, maintained via
+// TODO: update godoc
+// Materializer is a partial view of the state on servers, maintained via
 // streaming subscriptions. It is specialized for different cache types by
 // providing a View that encapsulates the logic to update the
 // state and format it as the correct result type.
 //
-// The MaterializedView object becomes the cache.Result.State for a streaming
+// The Materializer object becomes the cache.Result.State for a streaming
 // cache type and manages the actual streaming RPC call to the servers behind
 // the scenes until the cache result is discarded when TTL expires.
-type MaterializedView struct {
+type Materializer struct {
 	// Properties above the lock are immutable after the view is constructed in
 	// NewMaterializedViewFromFetch and must not be modified.
 	deps ViewDeps
@@ -121,8 +116,8 @@ type StreamingClient interface {
 // the cache evicts the result. If the view is not returned in a result state
 // though Close must be called some other way to avoid leaking the goroutine and
 // memory.
-func NewMaterializedViewFromFetch(deps ViewDeps) *MaterializedView {
-	v := &MaterializedView{
+func NewMaterializedViewFromFetch(deps ViewDeps) *Materializer {
+	v := &Materializer{
 		deps: deps,
 		view: deps.State,
 		// Allow first retry without wait, this is important and we rely on it in
@@ -135,16 +130,20 @@ func NewMaterializedViewFromFetch(deps ViewDeps) *MaterializedView {
 	return v
 }
 
+// SubscribeBackoffMax controls the range of exponential backoff when errors
+// are returned from subscriptions.
+const SubscribeBackoffMax = 60 * time.Second
+
 // Close implements io.Close and discards view state and stops background view
 // maintenance.
-func (v *MaterializedView) Close() error {
+func (v *Materializer) Close() error {
 	v.l.Lock()
 	defer v.l.Unlock()
 	v.deps.Stop()
 	return nil
 }
 
-func (v *MaterializedView) run(ctx context.Context) {
+func (v *Materializer) run(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -195,7 +194,7 @@ func (v *MaterializedView) run(ctx context.Context) {
 
 // runSubscription opens a new subscribe streaming call to the servers and runs
 // for it's lifetime or until the view is closed.
-func (v *MaterializedView) runSubscription(ctx context.Context) error {
+func (v *Materializer) runSubscription(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -313,7 +312,7 @@ func isGrpcStatus(err error, code codes.Code) bool {
 }
 
 // reset clears the state ready to start a new stream from scratch.
-func (v *MaterializedView) reset() {
+func (v *Materializer) reset() {
 	v.l.Lock()
 	defer v.l.Unlock()
 
@@ -329,7 +328,7 @@ func (v *MaterializedView) reset() {
 
 // notifyUpdateLocked closes the current update channel and recreates a new
 // one. It must be called while holding the s.l lock.
-func (v *MaterializedView) notifyUpdateLocked() {
+func (v *Materializer) notifyUpdateLocked() {
 	if v.updateCh != nil {
 		close(v.updateCh)
 	}
@@ -339,7 +338,7 @@ func (v *MaterializedView) notifyUpdateLocked() {
 // Fetch implements the logic a StreamingCacheType will need during it's Fetch
 // call. Cache types that use streaming should just be able to proxy to this
 // once they have a subscription object and return it's results directly.
-func (v *MaterializedView) Fetch(opts cache.FetchOptions) (cache.FetchResult, error) {
+func (v *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error) {
 	var result cache.FetchResult
 
 	// Get current view Result and index
