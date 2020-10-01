@@ -76,7 +76,7 @@ func NewReplicator(config *ReplicatorConfig) (*Replicator, error) {
 	if minFailures < 0 {
 		minFailures = 0
 	}
-	waiter := retry.NewRetryWaiter(minFailures, 0*time.Second, maxWait, retry.NewJitterRandomStagger(10))
+	waiter := retry.NewWaiter(minFailures, 0*time.Second, maxWait, retry.NewJitter(10))
 	return &Replicator{
 		limiter:          limiter,
 		waiter:           waiter,
@@ -121,7 +121,7 @@ func (r *Replicator) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		// wait some amount of time to prevent churning through many replication rounds while replication is failing
-		case <-r.waiter.WaitIfErr(err):
+		case <-r.waiter.WaitIf(err != nil):
 			// do nothing
 		}
 	}

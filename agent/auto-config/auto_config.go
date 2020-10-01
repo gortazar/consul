@@ -85,7 +85,7 @@ func New(config Config) (*AutoConfig, error) {
 	}
 
 	if config.Waiter == nil {
-		config.Waiter = retry.NewRetryWaiter(1, 0, 10*time.Minute, retry.NewJitterRandomStagger(25))
+		config.Waiter = retry.NewWaiter(1, 0, 10*time.Minute, retry.NewJitter(25))
 	}
 
 	return &AutoConfig{
