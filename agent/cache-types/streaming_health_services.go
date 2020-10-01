@@ -75,7 +75,7 @@ func newMaterializer(
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
-	view := submatview.NewMaterializer(submatview.ViewDeps{
+	view := submatview.NewMaterializer(submatview.MaterializerDeps{
 		State:  state,
 		Client: d.Client,
 		Logger: d.Logger,
@@ -94,7 +94,7 @@ func newMaterializer(
 }
 
 func newHealthViewState(filterExpr string) (submatview.View, error) {
-	s := &healthViewState{state: make(map[string]structs.CheckServiceNode)}
+	s := &healthView{state: make(map[string]structs.CheckServiceNode)}
 
 	// We apply filtering to the raw CheckServiceNodes before we are done mutating
 	// state in Update to save from storing stuff in memory we'll only filter
@@ -105,19 +105,19 @@ func newHealthViewState(filterExpr string) (submatview.View, error) {
 	return s, err
 }
 
-// healthViewState implements View for storing the view state
+// healthView implements submatview.View for storing the view state
 // of a service health result. We store it as a map to make updates and
 // deletions a little easier but we could just store a result type
 // (IndexedCheckServiceNodes) and update it in place for each event - that
 // involves re-sorting each time etc. though.
-type healthViewState struct {
+type healthView struct {
 	state map[string]structs.CheckServiceNode
 	// TODO: test case with filter
 	filter *bexpr.Filter
 }
 
 // Update implements View
-func (s *healthViewState) Update(events []*pbsubscribe.Event) error {
+func (s *healthView) Update(events []*pbsubscribe.Event) error {
 	for _, event := range events {
 		serviceHealth := event.GetServiceHealth()
 		if serviceHealth == nil {
@@ -147,7 +147,7 @@ func (s *healthViewState) Update(events []*pbsubscribe.Event) error {
 }
 
 // Result implements View
-func (s *healthViewState) Result(index uint64) (interface{}, error) {
+func (s *healthView) Result(index uint64) (interface{}, error) {
 	var result structs.IndexedCheckServiceNodes
 	// Avoid a nil slice if there are no results in the view
 	// TODO: why this ^
@@ -159,6 +159,6 @@ func (s *healthViewState) Result(index uint64) (interface{}, error) {
 	return &result, nil
 }
 
-func (s *healthViewState) Reset() {
+func (s *healthView) Reset() {
 	s.state = make(map[string]structs.CheckServiceNode)
 }

@@ -39,8 +39,6 @@ type View interface {
 	Reset()
 }
 
-type Filter func(seq interface{}) (interface{}, error)
-
 // resetErr represents a server request to reset the subscription, it's typed so
 // we can mark it as temporary and so attempt to retry first time without
 // notifying clients.
@@ -68,7 +66,7 @@ func (e resetErr) Error() string {
 type Materializer struct {
 	// Properties above the lock are immutable after the view is constructed in
 	// NewMaterializer and must not be modified.
-	deps ViewDeps
+	deps MaterializerDeps
 
 	// l protects the mutable state - all fields below it must only be accessed
 	// while holding l.
@@ -82,7 +80,7 @@ type Materializer struct {
 }
 
 // TODO: rename
-type ViewDeps struct {
+type MaterializerDeps struct {
 	State   View
 	Client  StreamingClient
 	Logger  hclog.Logger
@@ -105,7 +103,7 @@ type StreamingClient interface {
 // the cache evicts the result. If the view is not returned in a result state
 // though Close must be called some other way to avoid leaking the goroutine and
 // memory.
-func NewMaterializer(deps ViewDeps) *Materializer {
+func NewMaterializer(deps MaterializerDeps) *Materializer {
 	v := &Materializer{
 		deps:        deps,
 		view:        deps.State,
