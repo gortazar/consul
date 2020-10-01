@@ -1,4 +1,4 @@
-import Route from '@ember/routing/route';
+import Route from 'consul-ui/routing/route';
 import { inject as service } from '@ember/service';
 import { hash } from 'rsvp';
 import { get } from '@ember/object';
@@ -17,6 +17,7 @@ export default Route.extend({
         uri => uri`/${nspace}/${dc}/service-instances/for-service/${params.name}`
       ),
       urls: this.settings.findBySlug('urls'),
+      chain: null,
       proxies: [],
     })
       .then(model => {
@@ -46,6 +47,7 @@ export default Route.extend({
       });
   },
   setupController: function(controller, model) {
+    this._super(...arguments);
     controller.setProperties(model);
   },
 });
