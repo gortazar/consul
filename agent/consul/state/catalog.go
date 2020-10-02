@@ -2929,12 +2929,12 @@ func (s *Store) ServiceTopology(
 	if idx > maxIdx {
 		maxIdx = idx
 	}
-	idx, upstreams, err := s.combinedServiceNodesTxn(tx, ws, dc, upstreamNames)
+	idx, upstreams, err := s.combinedServiceNodesTxn(tx, ws, upstreamNames)
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to get upstreams for %q: %v", sn.String(), err)
 	}
 	if idx > maxIdx {
-		idx = maxIdx
+		maxIdx = idx
 	}
 
 	idx, downstreamNames, err := s.downstreamsForServiceTxn(tx, ws, dc, sn)
@@ -2944,12 +2944,12 @@ func (s *Store) ServiceTopology(
 	if idx > maxIdx {
 		maxIdx = idx
 	}
-	idx, downstreams, err := s.combinedServiceNodesTxn(tx, ws, dc, downstreamNames)
+	idx, downstreams, err := s.combinedServiceNodesTxn(tx, ws, downstreamNames)
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to get downstreams for %q: %v", sn.String(), err)
 	}
 	if idx > maxIdx {
-		idx = maxIdx
+		maxIdx = idx
 	}
 
 	resp := &structs.ServiceTopology{
@@ -2961,7 +2961,7 @@ func (s *Store) ServiceTopology(
 
 // combinedServiceNodesTxn returns typical and connect endpoints for a list of services.
 // This enabled aggregating checks statuses across both.
-func (s *Store) combinedServiceNodesTxn(tx *txn, ws memdb.WatchSet, dc string, names []structs.ServiceName) (uint64, structs.CheckServiceNodes, error) {
+func (s *Store) combinedServiceNodesTxn(tx *txn, ws memdb.WatchSet, names []structs.ServiceName) (uint64, structs.CheckServiceNodes, error) {
 	var (
 		maxIdx uint64
 		resp   structs.CheckServiceNodes
