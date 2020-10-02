@@ -4,11 +4,11 @@ import "github.com/hashicorp/consul/proto/pbsubscribe"
 
 type eventHandler func(events *pbsubscribe.Event) (eventHandler, error)
 
-func (v *Materializer) initialHandler(index uint64) eventHandler {
+func (m *Materializer) initialHandler(index uint64) eventHandler {
 	if index == 0 {
-		return newSnapshotHandler(v)
+		return newSnapshotHandler(m)
 	}
-	return v.resumeStreamHandler
+	return m.resumeStreamHandler
 }
 
 type snapshotHandler struct {
@@ -30,9 +30,9 @@ func (h *snapshotHandler) handle(event *pbsubscribe.Event) (eventHandler, error)
 	return h.material.eventStreamHandler, err
 }
 
-func (v *Materializer) eventStreamHandler(event *pbsubscribe.Event) (eventHandler, error) {
-	err := v.updateView(eventsFromEvent(event), event.Index)
-	return v.eventStreamHandler, err
+func (m *Materializer) eventStreamHandler(event *pbsubscribe.Event) (eventHandler, error) {
+	err := m.updateView(eventsFromEvent(event), event.Index)
+	return m.eventStreamHandler, err
 }
 
 func eventsFromEvent(event *pbsubscribe.Event) []*pbsubscribe.Event {
@@ -42,11 +42,11 @@ func eventsFromEvent(event *pbsubscribe.Event) []*pbsubscribe.Event {
 	return []*pbsubscribe.Event{event}
 }
 
-func (v *Materializer) resumeStreamHandler(event *pbsubscribe.Event) (eventHandler, error) {
+func (m *Materializer) resumeStreamHandler(event *pbsubscribe.Event) (eventHandler, error) {
 	if !event.GetNewSnapshotToFollow() {
-		return v.eventStreamHandler(event)
+		return m.eventStreamHandler(event)
 	}
 
-	v.reset()
-	return newSnapshotHandler(v), nil
+	m.reset()
+	return newSnapshotHandler(m), nil
 }

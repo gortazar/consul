@@ -115,41 +115,41 @@ func NewMaterializer(deps MaterializerDeps) *Materializer {
 
 // Close implements io.Close and discards view state and stops background view
 // maintenance.
-func (v *Materializer) Close() error {
-	v.l.Lock()
-	defer v.l.Unlock()
-	v.deps.Stop()
+func (m *Materializer) Close() error {
+	m.l.Lock()
+	defer m.l.Unlock()
+	m.deps.Stop()
 	return nil
 }
 
-func (v *Materializer) Run(ctx context.Context) {
+func (m *Materializer) Run(ctx context.Context) {
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 
-		req := v.deps.Request(v.index)
-		err := v.runSubscription(ctx, req)
+		req := m.deps.Request(m.index)
+		err := m.runSubscription(ctx, req)
 		if ctx.Err() != nil {
 			return
 		}
 
-		v.l.Lock()
+		m.l.Lock()
 		// TODO: move this into a func
 		// If this is a temporary error and it's the first consecutive failure,
 		// retry to see if we can get a result without erroring back to clients.
 		// If it's non-temporary or a repeated failure return to clients while we
 		// retry to get back in a good state.
-		if _, ok := err.(temporary); !ok || v.retryWaiter.Failures() > 0 {
+		if _, ok := err.(temporary); !ok || m.retryWaiter.Failures() > 0 {
 			// Report error to blocked fetchers
-			v.err = err
-			v.notifyUpdateLocked()
+			m.err = err
+			m.notifyUpdateLocked()
 		}
-		waitCh := v.retryWaiter.Failed()
-		failures := v.retryWaiter.Failures()
-		v.l.Unlock()
+		waitCh := m.retryWaiter.Failed()
+		failures := m.retryWaiter.Failures()
+		m.l.Unlock()
 
-		v.deps.Logger.Error("subscribe call failed",
+		m.deps.Logger.Error("subscribe call failed",
 			"err", err,
 			"topic", req.Topic,
 			"key", req.Key,
@@ -171,13 +171,13 @@ type temporary interface {
 
 // runSubscription opens a new subscribe streaming call to the servers and runs
 // for it's lifetime or until the view is closed.
-func (v *Materializer) runSubscription(ctx context.Context, req pbsubscribe.SubscribeRequest) error {
+func (m *Materializer) runSubscription(ctx context.Context, req pbsubscribe.SubscribeRequest) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	v.handler = v.initialHandler(req.Index)
+	m.handler = m.initialHandler(req.Index)
 
-	s, err := v.deps.Client.Subscribe(ctx, &req)
+	s, err := m.deps.Client.Subscribe(ctx, &req)
 	if err != nil {
 		return err
 	}
@@ -186,15 +186,15 @@ func (v *Materializer) runSubscription(ctx context.Context, req pbsubscribe.Subs
 		event, err := s.Recv()
 		switch {
 		case isGrpcStatus(err, codes.Aborted):
-			v.reset()
+			m.reset()
 			return resetErr("stream reset requested")
 		case err != nil:
 			return err
 		}
 
-		v.handler, err = v.handler(event)
+		m.handler, err = m.handler(event)
 		if err != nil {
-			v.reset()
+			m.reset()
 			return err
 		}
 	}
@@ -206,52 +206,52 @@ func isGrpcStatus(err error, code codes.Code) bool {
 }
 
 // reset clears the state ready to start a new stream from scratch.
-func (v *Materializer) reset() {
-	v.l.Lock()
-	defer v.l.Unlock()
+func (m *Materializer) reset() {
+	m.l.Lock()
+	defer m.l.Unlock()
 
-	v.view.Reset()
-	v.index = 0
-	v.err = nil
-	v.notifyUpdateLocked()
-	v.retryWaiter.Success()
+	m.view.Reset()
+	m.index = 0
+	m.err = nil
+	m.notifyUpdateLocked()
+	m.retryWaiter.Success()
 }
 
-func (v *Materializer) updateView(events []*pbsubscribe.Event, index uint64) error {
-	v.l.Lock()
-	defer v.l.Unlock()
-	if err := v.view.Update(events); err != nil {
+func (m *Materializer) updateView(events []*pbsubscribe.Event, index uint64) error {
+	m.l.Lock()
+	defer m.l.Unlock()
+	if err := m.view.Update(events); err != nil {
 		return err
 	}
 
-	v.index = index
-	v.err = nil
-	v.notifyUpdateLocked()
-	v.retryWaiter.Success()
+	m.index = index
+	m.err = nil
+	m.notifyUpdateLocked()
+	m.retryWaiter.Success()
 	return nil
 }
 
 // notifyUpdateLocked closes the current update channel and recreates a new
 // one. It must be called while holding the s.l lock.
-func (v *Materializer) notifyUpdateLocked() {
-	if v.updateCh != nil {
-		close(v.updateCh)
+func (m *Materializer) notifyUpdateLocked() {
+	if m.updateCh != nil {
+		close(m.updateCh)
 	}
-	v.updateCh = make(chan struct{})
+	m.updateCh = make(chan struct{})
 }
 
 // Fetch implements the logic a StreamingCacheType will need during it's Fetch
 // call. Cache types that use streaming should just be able to proxy to this
 // once they have a subscription object and return it's results directly.
-func (v *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error) {
+func (m *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error) {
 	var result cache.FetchResult
 
 	// Get current view Result and index
-	v.l.Lock()
-	index := v.index
-	val, err := v.view.Result(v.index)
-	updateCh := v.updateCh
-	v.l.Unlock()
+	m.l.Lock()
+	index := m.index
+	val, err := m.view.Result(m.index)
+	updateCh := m.updateCh
+	m.l.Unlock()
 
 	if err != nil {
 		return result, err
@@ -259,7 +259,7 @@ func (v *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error)
 
 	result.Index = index
 	result.Value = val
-	result.State = v
+	result.State = m
 
 	// If our index is > req.Index return right away. If index is zero then we
 	// haven't loaded a snapshot at all yet which means we should wait for one on
@@ -278,18 +278,18 @@ func (v *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error)
 		select {
 		case <-updateCh:
 			// View updated, return the new result
-			v.l.Lock()
-			result.Index = v.index
+			m.l.Lock()
+			result.Index = m.index
 			// Grab the new updateCh in case we need to keep waiting for the next
 			// update.
-			updateCh = v.updateCh
-			fetchErr := v.err
+			updateCh = m.updateCh
+			fetchErr := m.err
 			if fetchErr == nil {
 				// Only generate a new result if there was no error to avoid pointless
 				// work potentially shuffling the same data around.
-				result.Value, err = v.view.Result(v.index)
+				result.Value, err = m.view.Result(m.index)
 			}
-			v.l.Unlock()
+			m.l.Unlock()
 
 			// If there was a non-transient error return it
 			if fetchErr != nil {
@@ -314,7 +314,7 @@ func (v *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error)
 			// Just return whatever we got originally, might still be empty
 			return result, nil
 
-		case <-v.deps.Done:
+		case <-m.deps.Done:
 			return result, context.Canceled
 		}
 	}
