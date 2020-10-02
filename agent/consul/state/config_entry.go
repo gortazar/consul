@@ -400,7 +400,7 @@ func (s *Store) discoveryChainTargetsTxn(tx ReadTxn, ws memdb.WatchSet, dc, serv
 	return idx, resp, nil
 }
 
-// discoveryChainSourcesTxn will return a list of services whose discovery chains have the input service as a target
+// discoveryChainSourcesTxn will return a list of services whose discovery chains have the given service as a target
 func (s *Store) discoveryChainSourcesTxn(tx ReadTxn, ws memdb.WatchSet, dc string, destination structs.ServiceName) (uint64, []structs.ServiceName, error) {
 	seenLink := map[structs.ServiceName]bool{destination: true}
 

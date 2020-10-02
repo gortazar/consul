@@ -1410,7 +1410,7 @@ func (f *aclFilter) filterCheckServiceNodes(nodes *structs.CheckServiceNodes) {
 }
 
 // filterServiceTopology is used to filter upstreams/downstreams based on ACL rules.
-// this filter is unlike other in that it also returns whether the result was filtered by ACLs
+// this filter is unlike others in that it also returns whether the result was filtered by ACLs
 func (f *aclFilter) filterServiceTopology(topology *structs.ServiceTopology) bool {
 	numUp := len(topology.Upstreams)
 	numDown := len(topology.Downstreams)

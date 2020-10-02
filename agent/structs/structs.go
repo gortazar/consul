@@ -1034,7 +1034,7 @@ func (ns *NodeService) CompoundServiceName() ServiceName {
 // UniqueID is a unique identifier for a service instance within a datacenter by encoding:
 // node/namespace/service_id
 //
-// Note: We do have strict character restrictions in all node names, so this should NOT be split on / to retrieve components.
+// Note: We do not have strict character restrictions in all node names, so this should NOT be split on / to retrieve components.
 func UniqueID(node string, compoundID string) string {
 	return fmt.Sprintf("%s/%s", node, compoundID)
 }
@@ -2418,7 +2418,10 @@ type UpstreamDownstream struct {
 	// Upstream/Downstream pairs come from individual service registrations, and they can be updated individually.
 	// Refs stores the registrations that contain this pairing.
 	// When there are no remaining Refs, the UpstreamDownstream can be deleted.
-	Refs map[string]bool
+	//
+	// Note: This map must be treated as immutable when accessed in MemDB.
+	//       The entire UpstreamDownstream structure must be deep copied on updates.
+	Refs map[string]struct{}
 
 	RaftIndex
 }

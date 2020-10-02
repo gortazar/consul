@@ -830,7 +830,6 @@ func ensureServiceTxn(tx *txn, idx uint64, node string, preserveIndexes bool, sv
 		return fmt.Errorf("failed updating gateway mapping: %s", err)
 	}
 	// Update upstream/downstream mappings if it's a connect service
-	// TODO (freddy) What to do about Connect native services that don't define upstreams?
 	if svc.Kind == structs.ServiceKindConnectProxy {
 		if err = updateMeshTopology(tx, idx, node, svc, existing); err != nil {
 			return fmt.Errorf("failed updating upstream/downstream association")
@@ -2956,7 +2955,7 @@ func (s *Store) ServiceTopology(
 		Upstreams:   upstreams,
 		Downstreams: downstreams,
 	}
-	return 0, resp, nil
+	return maxIdx, resp, nil
 }
 
 // combinedServiceNodesTxn returns typical and connect endpoints for a list of services.
@@ -2989,9 +2988,10 @@ func (s *Store) combinedServiceNodesTxn(tx *txn, ws memdb.WatchSet, names []stru
 	return maxIdx, resp, nil
 }
 
-// UpstreamsForService will find all upstream services that the input could route traffic to.
+// upstreamsForServiceTxn will find all upstream services that the input could route traffic to.
 // There are two factors at play. Upstreams defined in a proxy registration, and the discovery chain for those upstreams.
 // TODO (freddy): Account for ingress gateways
+// TODO (freddy): Account for multi-dc upstreams
 func (s *Store) upstreamsForServiceTxn(tx ReadTxn, ws memdb.WatchSet, dc string, sn structs.ServiceName) (uint64, []structs.ServiceName, error) {
 	idx, upstreams, err := upstreamsFromRegistrationTxn(tx, ws, sn)
 	if err != nil {
@@ -3034,7 +3034,7 @@ func (s *Store) upstreamsForServiceTxn(tx ReadTxn, ws memdb.WatchSet, dc string,
 // There are two factors at play. Upstreams defined in a proxy registration, and the discovery chain for those upstreams.
 // TODO (freddy): Account for ingress gateways
 func (s *Store) downstreamsForServiceTxn(tx ReadTxn, ws memdb.WatchSet, dc string, service structs.ServiceName) (uint64, []structs.ServiceName, error) {
-	// First fetch services with discovery chains that list the input as a target
+	// First fetch services that have discovery chains that eventually route to the target service
 	idx, sources, err := s.discoveryChainSourcesTxn(tx, ws, dc, service)
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to get sources for discovery chain target %q: %v", service.String(), err)
@@ -3159,7 +3159,7 @@ func updateMeshTopology(tx *txn, idx uint64, node string, svc *structs.NodeServi
 			if !ok {
 				return fmt.Errorf("unexpected topology type %T", rawCopy)
 			}
-			mapping.Refs[uid] = true
+			mapping.Refs[uid] = struct{}{}
 			mapping.ModifyIndex = idx
 
 			inserted[upstream] = true
@@ -3168,7 +3168,7 @@ func updateMeshTopology(tx *txn, idx uint64, node string, svc *structs.NodeServi
 			mapping = &structs.UpstreamDownstream{
 				Upstream:   upstream,
 				Downstream: downstream,
-				Refs:       map[string]bool{uid: true},
+				Refs:       map[string]struct{}{uid: {}},
 				RaftIndex: structs.RaftIndex{
 					CreateIndex: idx,
 					ModifyIndex: idx,

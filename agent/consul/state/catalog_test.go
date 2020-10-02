@@ -6960,9 +6960,9 @@ func TestCatalog_DownstreamsForService(t *testing.T) {
 			expect: expect{
 				idx: 4,
 				names: []structs.ServiceName{
-					// get web from old-admin routing to admin and web listing old-admin as an upstream
+					// get web from listing admin directly as an upstream
 					{Name: "web", EnterpriseMeta: *defaultMeta},
-					// get api from listing admin directly as an upstream
+					// get api from old-admin routing to admin and web listing old-admin as an upstream
 					{Name: "api", EnterpriseMeta: *defaultMeta},
 				},
 			},
@@ -7008,4 +7008,131 @@ func TestCatalog_DownstreamsForService(t *testing.T) {
 			require.ElementsMatch(t, tc.expect.names, names)
 		})
 	}
+}
+
+func TestCatalog_DownstreamsForService_Updates(t *testing.T) {
+	var (
+		defaultMeta = structs.DefaultEnterpriseMeta()
+		target      = structs.NewServiceName("admin", defaultMeta)
+	)
+
+	s := testStateStore(t)
+	ca := &structs.CAConfiguration{
+		Provider: "consul",
+	}
+	err := s.CASetConfig(1, ca)
+	require.NoError(t, err)
+
+	require.NoError(t, s.EnsureNode(2, &structs.Node{
+		ID:   "c73b8fdf-4ef8-4e43-9aa2-59e85cc6a70c",
+		Node: "foo",
+	}))
+
+	// Register a service with our target as an upstream, and it should show up as a downstream
+	web := structs.NodeService{
+		Kind:    structs.ServiceKindConnectProxy,
+		ID:      "web-proxy",
+		Service: "web-proxy",
+		Address: "127.0.0.2",
+		Port:    443,
+		Proxy: structs.ConnectProxyConfig{
+			DestinationServiceName: "web",
+			Upstreams: structs.Upstreams{
+				structs.Upstream{
+					DestinationName: "db",
+				},
+				structs.Upstream{
+					DestinationName: "admin",
+				},
+			},
+		},
+		EnterpriseMeta: *defaultMeta,
+	}
+	require.NoError(t, s.EnsureService(3, "foo", &web))
+
+	ws := memdb.NewWatchSet()
+	tx := s.db.ReadTxn()
+	idx, names, err := s.downstreamsForServiceTxn(tx, ws, "dc1", target)
+	require.NoError(t, err)
+	tx.Abort()
+
+	expect := []structs.ServiceName{
+		{Name: "web", EnterpriseMeta: *defaultMeta},
+	}
+	require.Equal(t, uint64(3), idx)
+	require.ElementsMatch(t, expect, names)
+
+	// Register a service WITHOUT our target as an upstream, and the watch should not fire
+	api := structs.NodeService{
+		Kind:    structs.ServiceKindConnectProxy,
+		ID:      "api-proxy",
+		Service: "api-proxy",
+		Address: "127.0.0.1",
+		Port:    443,
+		Proxy: structs.ConnectProxyConfig{
+			DestinationServiceName: "api",
+			Upstreams: structs.Upstreams{
+				structs.Upstream{
+					DestinationName: "cache",
+				},
+				structs.Upstream{
+					DestinationName: "db",
+				},
+				structs.Upstream{
+					DestinationName: "old-admin",
+				},
+			},
+		},
+		EnterpriseMeta: *defaultMeta,
+	}
+	require.NoError(t, s.EnsureService(4, "foo", &api))
+	require.False(t, watchFired(ws))
+
+	// Update the routing so that api's upstream routes to our target and watches should fire
+	defaults := structs.ProxyConfigEntry{
+		Kind: structs.ProxyDefaults,
+		Name: structs.ProxyConfigGlobal,
+		Config: map[string]interface{}{
+			"protocol": "http",
+		},
+	}
+	require.NoError(t, defaults.Normalize())
+	require.NoError(t, s.EnsureConfigEntry(5, &defaults, nil))
+
+	router := structs.ServiceRouterConfigEntry{
+		Kind: structs.ServiceRouter,
+		Name: "old-admin",
+		Routes: []structs.ServiceRoute{
+			{
+				Match: &structs.ServiceRouteMatch{
+					HTTP: &structs.ServiceRouteHTTPMatch{
+						PathExact: "/v2",
+					},
+				},
+				Destination: &structs.ServiceRouteDestination{
+					Service: "admin",
+				},
+			},
+		},
+	}
+	require.NoError(t, router.Normalize())
+	require.NoError(t, s.EnsureConfigEntry(6, &router, nil))
+
+	// We updated a relevant config entry
+	require.True(t, watchFired(ws))
+
+	ws = memdb.NewWatchSet()
+	tx = s.db.ReadTxn()
+	idx, names, err = s.downstreamsForServiceTxn(tx, ws, "dc1", target)
+	require.NoError(t, err)
+	tx.Abort()
+
+	expect = []structs.ServiceName{
+		// get web from listing admin directly as an upstream
+		{Name: "web", EnterpriseMeta: *defaultMeta},
+		// get api from old-admin routing to admin and web listing old-admin as an upstream
+		{Name: "api", EnterpriseMeta: *defaultMeta},
+	}
+	require.Equal(t, uint64(6), idx)
+	require.ElementsMatch(t, expect, names)
 }
