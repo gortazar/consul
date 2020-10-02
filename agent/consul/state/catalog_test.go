@@ -6136,7 +6136,7 @@ func TestCatalog_catalogDownstreams_Watches(t *testing.T) {
 	// Watch should fire since the admin <-> web-proxy pairing was inserted into the topology table
 	ws := memdb.NewWatchSet()
 	tx := s.db.ReadTxn()
-	idx, names, err := downstreamsFromRegistration(ws, tx, admin)
+	idx, names, err := downstreamsFromRegistrationTxn(tx, ws, admin)
 	require.NoError(t, err)
 	assert.Zero(t, idx)
 	assert.Len(t, names, 0)
@@ -6165,7 +6165,7 @@ func TestCatalog_catalogDownstreams_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = downstreamsFromRegistration(ws, tx, admin)
+	idx, names, err = downstreamsFromRegistrationTxn(tx, ws, admin)
 	require.NoError(t, err)
 
 	exp := expect{
@@ -6194,7 +6194,7 @@ func TestCatalog_catalogDownstreams_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, _, err = downstreamsFromRegistration(ws, tx, admin)
+	idx, _, err = downstreamsFromRegistrationTxn(tx, ws, admin)
 	require.NoError(t, err)
 
 	exp = expect{
@@ -6207,7 +6207,7 @@ func TestCatalog_catalogDownstreams_Watches(t *testing.T) {
 	// Should still be able to get downstream for one of the other upstreams
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = downstreamsFromRegistration(ws, tx, cache)
+	idx, names, err = downstreamsFromRegistrationTxn(tx, ws, cache)
 	require.NoError(t, err)
 
 	exp = expect{
@@ -6225,7 +6225,7 @@ func TestCatalog_catalogDownstreams_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, _, err = downstreamsFromRegistration(ws, tx, cache)
+	idx, _, err = downstreamsFromRegistrationTxn(tx, ws, cache)
 
 	require.NoError(t, err)
 
@@ -6354,7 +6354,7 @@ func TestCatalog_catalogDownstreams(t *testing.T) {
 			}
 
 			tx := s.db.ReadTxn()
-			idx, names, err := downstreamsFromRegistration(ws, tx, structs.NewServiceName("admin", structs.DefaultEnterpriseMeta()))
+			idx, names, err := downstreamsFromRegistrationTxn(tx, ws, structs.NewServiceName("admin", structs.DefaultEnterpriseMeta()))
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)
@@ -6529,7 +6529,7 @@ func TestCatalog_upstreamsFromRegistration(t *testing.T) {
 			}
 
 			tx := s.db.ReadTxn()
-			idx, names, err := upstreamsFromRegistration(ws, tx, structs.NewServiceName("api", structs.DefaultEnterpriseMeta()))
+			idx, names, err := upstreamsFromRegistrationTxn(tx, ws, structs.NewServiceName("api", structs.DefaultEnterpriseMeta()))
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)
@@ -6556,7 +6556,7 @@ func TestCatalog_upstreamsFromRegistration_Watches(t *testing.T) {
 
 	ws := memdb.NewWatchSet()
 	tx := s.db.ReadTxn()
-	idx, names, err := upstreamsFromRegistration(ws, tx, web)
+	idx, names, err := upstreamsFromRegistrationTxn(tx, ws, web)
 	require.NoError(t, err)
 	assert.Zero(t, idx)
 	assert.Len(t, names, 0)
@@ -6586,7 +6586,7 @@ func TestCatalog_upstreamsFromRegistration_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = upstreamsFromRegistration(ws, tx, web)
+	idx, names, err = upstreamsFromRegistrationTxn(tx, ws, web)
 	require.NoError(t, err)
 
 	exp := expect{
@@ -6613,7 +6613,7 @@ func TestCatalog_upstreamsFromRegistration_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = upstreamsFromRegistration(ws, tx, web)
+	idx, names, err = upstreamsFromRegistrationTxn(tx, ws, web)
 	require.NoError(t, err)
 
 	exp = expect{
@@ -6655,7 +6655,7 @@ func TestCatalog_upstreamsFromRegistration_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = upstreamsFromRegistration(ws, tx, web)
+	idx, names, err = upstreamsFromRegistrationTxn(tx, ws, web)
 	require.NoError(t, err)
 
 	exp = expect{
@@ -6676,7 +6676,7 @@ func TestCatalog_upstreamsFromRegistration_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, names, err = upstreamsFromRegistration(ws, tx, web)
+	idx, names, err = upstreamsFromRegistrationTxn(tx, ws, web)
 	require.NoError(t, err)
 
 	exp = expect{
@@ -6696,7 +6696,7 @@ func TestCatalog_upstreamsFromRegistration_Watches(t *testing.T) {
 
 	ws = memdb.NewWatchSet()
 	tx = s.db.ReadTxn()
-	idx, _, err = upstreamsFromRegistration(ws, tx, web)
+	idx, _, err = upstreamsFromRegistrationTxn(tx, ws, web)
 
 	require.NoError(t, err)
 
@@ -6860,9 +6860,12 @@ func TestCatalog_UpstreamsForService(t *testing.T) {
 				i++
 			}
 
+			tx := s.db.ReadTxn()
+			defer tx.Abort()
+
 			ws := memdb.NewWatchSet()
 			sn := structs.NewServiceName("api", structs.DefaultEnterpriseMeta())
-			idx, names, err := s.UpstreamsForService(ws, "dc1", sn)
+			idx, names, err := s.upstreamsForServiceTxn(tx, ws, "dc1", sn)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)
@@ -6993,9 +6996,12 @@ func TestCatalog_DownstreamsForService(t *testing.T) {
 				i++
 			}
 
+			tx := s.db.ReadTxn()
+			defer tx.Abort()
+
 			ws := memdb.NewWatchSet()
 			sn := structs.NewServiceName("admin", structs.DefaultEnterpriseMeta())
-			idx, names, err := s.DownstreamsForService(ws, "dc1", sn)
+			idx, names, err := s.downstreamsForServiceTxn(tx, ws, "dc1", sn)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expect.idx, idx)

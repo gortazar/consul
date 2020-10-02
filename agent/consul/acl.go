@@ -1418,10 +1418,7 @@ func (f *aclFilter) filterServiceTopology(topology *structs.ServiceTopology) boo
 	f.filterCheckServiceNodes(&topology.Upstreams)
 	f.filterCheckServiceNodes(&topology.Downstreams)
 
-	if numUp != len(topology.Upstreams) || numDown != len(topology.Downstreams) {
-		return true
-	}
-	return false
+	return numUp != len(topology.Upstreams) || numDown != len(topology.Downstreams)
 }
 
 // filterDatacenterCheckServiceNodes is used to filter nodes based on ACL rules.
