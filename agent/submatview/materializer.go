@@ -2,7 +2,6 @@ package submatview
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -68,15 +67,16 @@ type Materializer struct {
 	// NewMaterializer and must not be modified.
 	deps MaterializerDeps
 
+	retryWaiter *retry.Waiter
+	handler     eventHandler
+
 	// l protects the mutable state - all fields below it must only be accessed
 	// while holding l.
-	l            sync.Mutex
-	index        uint64
-	view         View
-	snapshotDone bool
-	updateCh     chan struct{}
-	retryWaiter  *retry.Waiter
-	err          error
+	l        sync.Mutex
+	index    uint64
+	view     View
+	updateCh chan struct{}
+	err      error
 }
 
 // TODO: rename
@@ -175,21 +175,12 @@ func (v *Materializer) runSubscription(ctx context.Context, req pbsubscribe.Subs
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	v.l.Lock()
-
-	// Make local copy so we don't have to read with a lock for every event. We
-	// are the only goroutine that can update so we know it won't change without
-	// us knowing but we do need lock to protect external readers when we update.
-	snapshotDone := v.snapshotDone
-
-	v.l.Unlock()
+	v.handler = v.initialHandler(req.Index)
 
 	s, err := v.deps.Client.Subscribe(ctx, &req)
 	if err != nil {
 		return err
 	}
-
-	snapshotEvents := make([]*pbsubscribe.Event, 0)
 
 	for {
 		event, err := s.Recv()
@@ -201,77 +192,10 @@ func (v *Materializer) runSubscription(ctx context.Context, req pbsubscribe.Subs
 			return err
 		}
 
-		if event.GetEndOfSnapshot() {
-			// Hold lock while mutating view state so implementer doesn't need to
-			// worry about synchronization.
-			v.l.Lock()
-
-			// Deliver snapshot events to the View state
-			if err := v.view.Update(snapshotEvents); err != nil {
-				v.l.Unlock()
-				// This error is kinda fatal to the view - we didn't apply some events
-				// the server sent us which means our view is now not in sync. The only
-				// thing we can do is start over and hope for a better outcome.
-				v.reset()
-				return err
-			}
-			// Done collecting these now
-			snapshotEvents = nil
-			v.snapshotDone = true
-			// update our local copy so we can read it without lock.
-			snapshotDone = true
-			v.index = event.Index
-			// We have a good result, reset the error flag
-			v.err = nil
-			v.retryWaiter.Success()
-			// Notify watchers of the update to the view
-			v.notifyUpdateLocked()
-			v.l.Unlock()
-			continue
-		}
-
-		if event.GetEndOfEmptySnapshot() {
-			// We've opened a new subscribe with a non-zero index to resume a
-			// connection and the server confirms it's not sending a new snapshot.
-			if !snapshotDone {
-				// We've somehow got into a bad state here - the server thinks we have
-				// an up-to-date snapshot but we don't think we do. Reset and start
-				// over.
-				v.reset()
-				return errors.New("stream resume sent but no local snapshot")
-			}
-			// Just continue on as we were!
-			continue
-		}
-
-		// We have an event for the topic
-		events := []*pbsubscribe.Event{event}
-
-		// If the event is a batch, unwrap and deliver the raw events
-		if batch := event.GetEventBatch(); batch != nil {
-			events = batch.Events
-		}
-
-		if snapshotDone {
-			// We've already got a snapshot, this is an update, deliver it right away.
-			v.l.Lock()
-			if err := v.view.Update(events); err != nil {
-				v.l.Unlock()
-				// This error is kinda fatal to the view - we didn't apply some events
-				// the server sent us which means our view is now not in sync. The only
-				// thing we can do is start over and hope for a better outcome.
-				v.reset()
-				return err
-			}
-			// Notify watchers of the update to the view
-			v.index = event.Index
-			// We have a good result, reset the error flag
-			v.err = nil
-			v.retryWaiter.Success()
-			v.notifyUpdateLocked()
-			v.l.Unlock()
-		} else {
-			snapshotEvents = append(snapshotEvents, events...)
+		v.handler, err = v.handler(event)
+		if err != nil {
+			v.reset()
+			return err
 		}
 	}
 }
@@ -287,13 +211,24 @@ func (v *Materializer) reset() {
 	defer v.l.Unlock()
 
 	v.view.Reset()
-	v.notifyUpdateLocked()
-	// Always start from zero when we have a new state so we load a snapshot from
-	// the servers.
 	v.index = 0
-	v.snapshotDone = false
 	v.err = nil
+	v.notifyUpdateLocked()
 	v.retryWaiter.Success()
+}
+
+func (v *Materializer) updateView(events []*pbsubscribe.Event, index uint64) error {
+	v.l.Lock()
+	defer v.l.Unlock()
+	if err := v.view.Update(events); err != nil {
+		return err
+	}
+
+	v.index = index
+	v.err = nil
+	v.notifyUpdateLocked()
+	v.retryWaiter.Success()
+	return nil
 }
 
 // notifyUpdateLocked closes the current update channel and recreates a new
