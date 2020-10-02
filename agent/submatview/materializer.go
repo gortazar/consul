@@ -70,9 +70,9 @@ type Materializer struct {
 	retryWaiter *retry.Waiter
 	handler     eventHandler
 
-	// l protects the mutable state - all fields below it must only be accessed
-	// while holding l.
-	l        sync.Mutex
+	// lock protects the mutable state - all fields below it must only be accessed
+	// while holding lock.
+	lock     sync.Mutex
 	index    uint64
 	view     View
 	updateCh chan struct{}
@@ -116,8 +116,8 @@ func NewMaterializer(deps MaterializerDeps) *Materializer {
 // Close implements io.Close and discards view state and stops background view
 // maintenance.
 func (m *Materializer) Close() error {
-	m.l.Lock()
-	defer m.l.Unlock()
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.deps.Stop()
 	return nil
 }
@@ -134,7 +134,7 @@ func (m *Materializer) Run(ctx context.Context) {
 			return
 		}
 
-		m.l.Lock()
+		m.lock.Lock()
 		// TODO: move this into a func
 		// If this is a temporary error and it's the first consecutive failure,
 		// retry to see if we can get a result without erroring back to clients.
@@ -147,7 +147,7 @@ func (m *Materializer) Run(ctx context.Context) {
 		}
 		waitCh := m.retryWaiter.Failed()
 		failures := m.retryWaiter.Failures()
-		m.l.Unlock()
+		m.lock.Unlock()
 
 		m.deps.Logger.Error("subscribe call failed",
 			"err", err,
@@ -207,8 +207,8 @@ func isGrpcStatus(err error, code codes.Code) bool {
 
 // reset clears the state ready to start a new stream from scratch.
 func (m *Materializer) reset() {
-	m.l.Lock()
-	defer m.l.Unlock()
+	m.lock.Lock()
+	defer m.lock.Unlock()
 
 	m.view.Reset()
 	m.index = 0
@@ -218,8 +218,8 @@ func (m *Materializer) reset() {
 }
 
 func (m *Materializer) updateView(events []*pbsubscribe.Event, index uint64) error {
-	m.l.Lock()
-	defer m.l.Unlock()
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	if err := m.view.Update(events); err != nil {
 		return err
 	}
@@ -232,7 +232,7 @@ func (m *Materializer) updateView(events []*pbsubscribe.Event, index uint64) err
 }
 
 // notifyUpdateLocked closes the current update channel and recreates a new
-// one. It must be called while holding the s.l lock.
+// one. It must be called while holding the s.lock lock.
 func (m *Materializer) notifyUpdateLocked() {
 	if m.updateCh != nil {
 		close(m.updateCh)
@@ -247,11 +247,11 @@ func (m *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error)
 	var result cache.FetchResult
 
 	// Get current view Result and index
-	m.l.Lock()
+	m.lock.Lock()
 	index := m.index
 	val, err := m.view.Result(m.index)
 	updateCh := m.updateCh
-	m.l.Unlock()
+	m.lock.Unlock()
 
 	if err != nil {
 		return result, err
@@ -278,7 +278,7 @@ func (m *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error)
 		select {
 		case <-updateCh:
 			// View updated, return the new result
-			m.l.Lock()
+			m.lock.Lock()
 			result.Index = m.index
 			// Grab the new updateCh in case we need to keep waiting for the next
 			// update.
@@ -289,7 +289,7 @@ func (m *Materializer) Fetch(opts cache.FetchOptions) (cache.FetchResult, error)
 				// work potentially shuffling the same data around.
 				result.Value, err = m.view.Result(m.index)
 			}
-			m.l.Unlock()
+			m.lock.Unlock()
 
 			// If there was a non-transient error return it
 			if fetchErr != nil {

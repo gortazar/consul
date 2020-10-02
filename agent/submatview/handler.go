@@ -21,13 +21,13 @@ func newSnapshotHandler(m *Materializer) eventHandler {
 }
 
 func (h *snapshotHandler) handle(event *pbsubscribe.Event) (eventHandler, error) {
-	if !event.GetEndOfSnapshot() {
-		h.events = append(h.events, eventsFromEvent(event)...)
-		return h.handle, nil
+	if event.GetEndOfSnapshot() {
+		err := h.material.updateView(h.events, event.Index)
+		return h.material.eventStreamHandler, err
 	}
 
-	err := h.material.updateView(h.events, event.Index)
-	return h.material.eventStreamHandler, err
+	h.events = append(h.events, eventsFromEvent(event)...)
+	return h.handle, nil
 }
 
 func (m *Materializer) eventStreamHandler(event *pbsubscribe.Event) (eventHandler, error) {
@@ -43,10 +43,9 @@ func eventsFromEvent(event *pbsubscribe.Event) []*pbsubscribe.Event {
 }
 
 func (m *Materializer) resumeStreamHandler(event *pbsubscribe.Event) (eventHandler, error) {
-	if !event.GetNewSnapshotToFollow() {
-		return m.eventStreamHandler(event)
+	if event.GetNewSnapshotToFollow() {
+		m.reset()
+		return newSnapshotHandler(m), nil
 	}
-
-	m.reset()
-	return newSnapshotHandler(m), nil
+	return m.eventStreamHandler(event)
 }
