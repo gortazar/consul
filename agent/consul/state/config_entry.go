@@ -647,6 +647,18 @@ func testCompileDiscoveryChain(
 	return chain.Protocol, chain.Nodes[chain.StartNode], nil
 }
 
+func (s *Store) ServiceDiscoveryChain(
+	ws memdb.WatchSet,
+	serviceName string,
+	entMeta *structs.EnterpriseMeta,
+	req discoverychain.CompileRequest,
+) (uint64, *structs.CompiledDiscoveryChain, error) {
+	tx := s.db.ReadTxn()
+	defer tx.Abort()
+
+	return s.serviceDiscoveryChainTxn(tx, ws, serviceName, entMeta, req)
+}
+
 func (s *Store) serviceDiscoveryChainTxn(
 	tx ReadTxn,
 	ws memdb.WatchSet,
